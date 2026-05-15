@@ -1,10 +1,10 @@
 # cotp — CLI OTP / QR vault
 
-[![CI](https://github.com/YOUR_GITHUB_USERNAME/qr-vault-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/YOUR_GITHUB_USERNAME/qr-vault-cli/actions/workflows/ci.yml)
+[![CI](https://github.com/ytensor42/qr-vault-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/ytensor42/qr-vault-cli/actions/workflows/ci.yml)
 [![PyPI version](https://img.shields.io/pypi/v/cotp-cli)](https://pypi.org/project/cotp-cli/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-**Open-source repository:** [**qr-vault-cli**](https://github.com/YOUR_GITHUB_USERNAME/qr-vault-cli) — distributed on PyPI as [**cotp-cli**](https://pypi.org/project/cotp-cli/) with the **`cotp`** command. Replace `YOUR_GITHUB_USERNAME` in links after you create the GitHub repo.
+**Open-source repository:** [**qr-vault-cli**](https://github.com/ytensor42/qr-vault-cli) — distributed on PyPI as [**cotp-cli**](https://pypi.org/project/cotp-cli/) with the **`cotp`** command.
 
 **cotp** is a short CLI for working with `qr-vault.yaml`, PNG QR codes, TOTP, and random passwords.
 
@@ -84,10 +84,10 @@ pytest
 ruff check .
 ```
 
-Install from Git (replace `YOUR_GITHUB_USERNAME`):
+Install from Git:
 
 ```bash
-pip install "cotp-cli @ git+https://github.com/YOUR_GITHUB_USERNAME/qr-vault-cli.git"
+pip install "cotp-cli @ git+https://github.com/ytensor42/qr-vault-cli.git"
 ```
 
 ## Community

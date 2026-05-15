@@ -31,11 +31,11 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/YOUR_GITHUB_USERNAME/qr-vault-cli"
-Repository = "https://github.com/YOUR_GITHUB_USERNAME/qr-vault-cli"
-Documentation = "https://github.com/YOUR_GITHUB_USERNAME/qr-vault-cli#readme"
-Issues = "https://github.com/YOUR_GITHUB_USERNAME/qr-vault-cli/issues"
-Changelog = "https://github.com/YOUR_GITHUB_USERNAME/qr-vault-cli/blob/main/CHANGELOG.md"
+Homepage = "https://github.com/ytensor42/qr-vault-cli"
+Repository = "https://github.com/ytensor42/qr-vault-cli"
+Documentation = "https://github.com/ytensor42/qr-vault-cli#readme"
+Issues = "https://github.com/ytensor42/qr-vault-cli/issues"
+Changelog = "https://github.com/ytensor42/qr-vault-cli/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
 dev = [

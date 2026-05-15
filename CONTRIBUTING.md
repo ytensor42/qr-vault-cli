@@ -1,8 +1,6 @@
 # Contributing
 
-Thank you for helping improve **qr-vault-cli** (PyPI package **`cotp-cli`**, CLI **`cotp`**).
-
-After you create the GitHub repository, replace the placeholder **`YOUR_GITHUB_USERNAME`** in `README.md`, `README-ko.md`, `pyproject.toml` (`[project.urls]`), `.github/ISSUE_TEMPLATE/config.yml`, `CHANGELOG.md` link footers, and CI badge URLs.
+Thank you for helping improve [**qr-vault-cli**](https://github.com/ytensor42/qr-vault-cli) (PyPI package **`cotp-cli`**, CLI **`cotp`**).
 
 ## Ground rules
 
@@ -13,7 +11,7 @@ After you create the GitHub repository, replace the placeholder **`YOUR_GITHUB_U
 ## Development setup
 
 ```bash
-git clone https://github.com/YOUR_GITHUB_USERNAME/qr-vault-cli.git
+git clone https://github.com/ytensor42/qr-vault-cli.git
 cd qr-vault-cli
 python3 -m venv .venv
 source .venv/bin/activate

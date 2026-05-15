@@ -1,10 +1,10 @@
 # cotp — CLI OTP / QR vault
 
-[![CI](https://github.com/YOUR_GITHUB_USERNAME/qr-vault-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/YOUR_GITHUB_USERNAME/qr-vault-cli/actions/workflows/ci.yml)
+[![CI](https://github.com/ytensor42/qr-vault-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/ytensor42/qr-vault-cli/actions/workflows/ci.yml)
 [![PyPI version](https://img.shields.io/pypi/v/cotp-cli)](https://pypi.org/project/cotp-cli/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-**오픈소스 저장소:** [**qr-vault-cli**](https://github.com/YOUR_GITHUB_USERNAME/qr-vault-cli) — PyPI 패키지 [**cotp-cli**](https://pypi.org/project/cotp-cli/), CLI **`cotp`**. GitHub 저장소를 만든 뒤 링크의 `YOUR_GITHUB_USERNAME` 을 바꿉니다.
+**오픈소스 저장소:** [**qr-vault-cli**](https://github.com/ytensor42/qr-vault-cli) — PyPI 패키지 [**cotp-cli**](https://pypi.org/project/cotp-cli/), CLI **`cotp`**.
 
 짧은 이름 **cotp**(CLI·OTP 류 도구로 쓰기 좋게) — `qr-vault.yaml` 과 PNG QR, TOTP, 랜덤 비밀번호를 다룹니다.
 
@@ -82,10 +82,10 @@ pytest
 ruff check .
 ```
 
-Git에서 설치 (`YOUR_GITHUB_USERNAME` 교체):
+Git에서 설치:
 
 ```bash
-pip install "cotp-cli @ git+https://github.com/YOUR_GITHUB_USERNAME/qr-vault-cli.git"
+pip install "cotp-cli @ git+https://github.com/ytensor42/qr-vault-cli.git"
 ```
 
 ## 커뮤니티

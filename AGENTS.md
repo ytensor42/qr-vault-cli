@@ -6,7 +6,7 @@
 
 ## 한 줄 요약
 
-**GitHub 저장소 이름:** `qr-vault-cli` · **PyPI** **`cotp-cli`** · 로컬 폴더명 **`otp`** (역사적) · import **`cotp_cli`** · 콘솔 **`cotp`** (`python -m cotp_cli`). QR PNG에서 otpauth 시드를 읽고, **`qr-vault.yaml`** vault와 **TOTP `get`**, **`random`** 을 다룬다.
+**GitHub:** https://github.com/ytensor42/qr-vault-cli · **PyPI** **`cotp-cli`** · 로컬 폴더명 **`otp`** (역사적) · import **`cotp_cli`** · 콘솔 **`cotp`** (`python -m cotp_cli`). QR PNG에서 otpauth 시드를 읽고, **`qr-vault.yaml`** vault와 **TOTP `get`**, **`random`** 을 다룬다.
 
 ---
 
@@ -24,7 +24,7 @@
 | `.github/ISSUE_TEMPLATE/` | 버그·기능 요청 폼 |
 | `.github/pull_request_template.md` | PR 본문 템플릿 |
 
-배지·`pyproject.toml` 의 `[project.urls]` 에는 자리 표시자 `YOUR_GITHUB_USERNAME` 이 있음 → 저장/public 후 일괄 치환.
+배지·`pyproject.toml` `[project.urls]`·`CHANGELOG` 링크: **`ytensor42/qr-vault-cli`**.
 
 ---
 

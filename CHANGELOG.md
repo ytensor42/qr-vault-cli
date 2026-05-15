@@ -33,7 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Earlier history: see git log and PyPI release notes.
 
-[Unreleased]: https://github.com/YOUR_GITHUB_USERNAME/qr-vault-cli/compare/v0.6.9...HEAD
-[0.6.9]: https://github.com/YOUR_GITHUB_USERNAME/qr-vault-cli/compare/v0.6.8...v0.6.9
-[0.6.8]: https://github.com/YOUR_GITHUB_USERNAME/qr-vault-cli/compare/v0.6.7...v0.6.8
-[0.6.7]: https://github.com/YOUR_GITHUB_USERNAME/qr-vault-cli/commits/v0.6.7
+[Unreleased]: https://github.com/ytensor42/qr-vault-cli/compare/v0.6.9...HEAD
+[0.6.9]: https://github.com/ytensor42/qr-vault-cli/compare/v0.6.8...v0.6.9
+[0.6.8]: https://github.com/ytensor42/qr-vault-cli/compare/v0.6.7...v0.6.8
+[0.6.7]: https://github.com/ytensor42/qr-vault-cli/commits/v0.6.7
