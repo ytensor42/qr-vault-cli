@@ -1,0 +1,24 @@
+name: Feature request
+description: Suggest an idea for qr-vault-cli / cotp
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        For **security-sensitive** behavior, see **SECURITY.md** instead of a public issue.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+      description: What workflow is harder than it should be?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: CLI shape, config keys, or behavior you have in mind
+    validations:
+      required: false

@@ -1,0 +1,55 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "cotp-cli"
+version = "0.6.9"
+description = "cotp-cli: cotp [get] put|get|read|random — QR vault, TOTP, seed dump, password."
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.11"
+keywords = ["totp", "otp", "2fa", "mfa", "qr-code", "vault", "cli", "security"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Security",
+  "Topic :: Utilities",
+]
+dependencies = [
+  "pillow>=10.0.0",
+  "pyotp>=2.9.0",
+  "pyyaml>=6.0.0",
+  "pyzbar>=0.1.9",
+]
+
+[project.urls]
+Homepage = "https://github.com/YOUR_GITHUB_USERNAME/qr-vault-cli"
+Repository = "https://github.com/YOUR_GITHUB_USERNAME/qr-vault-cli"
+Documentation = "https://github.com/YOUR_GITHUB_USERNAME/qr-vault-cli#readme"
+Issues = "https://github.com/YOUR_GITHUB_USERNAME/qr-vault-cli/issues"
+Changelog = "https://github.com/YOUR_GITHUB_USERNAME/qr-vault-cli/blob/main/CHANGELOG.md"
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0.0",
+  "qrcode[pil]>=7.4.0",
+  "ruff>=0.6.0",
+]
+
+[project.scripts]
+cotp = "cotp_cli.main:main"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

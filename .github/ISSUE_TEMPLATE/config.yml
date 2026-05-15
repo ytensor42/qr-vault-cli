@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security policy
+    about: How to report vulnerabilities (read before opening a public issue).
+    url: https://github.com/YOUR_GITHUB_USERNAME/qr-vault-cli/blob/main/SECURITY.md

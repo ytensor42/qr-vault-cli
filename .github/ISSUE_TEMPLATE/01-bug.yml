@@ -1,0 +1,36 @@
+name: Bug report
+description: Something is broken or behaves unexpectedly
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do **not** include real secrets, `qr-vault.yaml` contents, or live TOTP values.
+
+  - type: input
+    id: version
+    attributes:
+      label: cotp-cli version
+      description: Output of `pip show cotp-cli` or `python -m cotp_cli --help` context
+      placeholder: e.g. 0.6.9
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: OS
+      options:
+        - macOS
+        - Linux
+        - Windows (WSL / other)
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: Minimal commands and what you expected vs got
+    validations:
+      required: true
