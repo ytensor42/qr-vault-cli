@@ -10,6 +10,54 @@
 
 ---
 
+## 사용자 요구 기능 요약
+
+아래는 대화·이슈에서 **사용자가 명시한 동작 요구**를 모은 것이다. 구현 세부·함수명은 아래 **CLI 동작** 절을 따른다.
+
+### 프로젝트·환경
+
+| 요구 | 구현 상태 |
+|------|-----------|
+| 로컬 폴더명 **`otp` → `cotp`** (`~/Projects/cotp`) | 반영 |
+| 경로 변경 후 **`.venv` 재생성** 및 `pip install -e ".[dev]"` | 반영 |
+
+### `put` — vault 쓰기·갱신
+
+| 요구 | 동작 |
+|------|------|
+| 저장 시 **`labels`에 key·username 항상 포함** | `labels_for_vault_entry(cluster, username, extra)` |
+| 추가 라벨은 **위치 인자가 아니라 `-l` / `--labels`** (콤마 구분) | `put … -l test,prod` |
+| **`-f` 생략** = PNG 미읽음, **메타데이터만** 갱신(labels/password), **기존 seed 유지** | `run_put_metadata_only`; 신규 키는 seed `""` |
+| **`-f` 있을 때만** QR에서 시드 추출·stdout·vault merge | `run_save_from_png` |
+| 갱신은 **key + username + labels(집합)** 이 vault와 **정확히 1건** 일치할 때만 | 그 외 **거부** + stderr **hints** (같은 key / username / labels 겹침 등) |
+| 암시적 put: **`cotp <key> <username>` + `-f` 또는 `-p`만** (`-l` 단독은 put 아님) | `looks_like_implicit_put` |
+
+### `get` — 조회·출력·클립보드
+
+| 요구 | 동작 |
+|------|------|
+| **라벨은 위치 인자 없음**, **`-l` / `--labels`만** | `cotp tp00 -l admin`, `cotp -l test` 등 |
+| **`-l` 없음** + KEY → 해당 키 1건; KEY+username → username 일치 | `label_mode=none` |
+| **`-l` + KEY+username** → vault labels와 **집합 정확 일치** | `label_mode=exact` |
+| **`-l`만** 또는 KEY+`-l`(username 생략) → vault labels가 **쿼리 라벨 전부 포함**(부분 집합) | `label_mode=subset` |
+| KEY+username 주고 **`-l`에 추가만** 줄 때도 조회용 labels에 **key·username 포함** | `query_labels_for_get` |
+| **`-t`** → TOTP만 클립보드, **password 복사 생략** | `totp_to_clipboard` |
+| **인자 없음** → 도움말 (`cotp` = `cotp -h`) | `argv_for_dispatch` |
+| 암시적 get: 서브커맨드 생략, **`-l` / `-t`로 시작**해도 get | `argv_for_dispatch` |
+| **매칭 0건** → `no matched data` | |
+| **매칭 1건** → stdout **여러 줄 정렬** (`Timestamp:` / `Key:` / …) | `format_get_output`; seed 없으면 OTP 줄 생략 |
+| **매칭 2건 이상** → **엔트리당 한 줄**, 필드는 **공백** 구분; **labels끼리는 콤마만**(공백 없음) | `format_get_output_line` · 예: `22:39:11 tp00 admin 079724 tp00,admin,test` |
+| **클립보드·stderr 복사 안내**는 **1건일 때만**; 다중 매칭 시 stdout만 | |
+
+### 그 외
+
+| 요구 | 동작 |
+|------|------|
+| `password` vault 필드 → **표준 Base64(UTF-8)** 디코드 후 클립보드 | `decode_vault_password_for_clipboard` |
+| 스크립트·파이프는 **stdout만** 파싱 전제 | stderr는 사람용 안내 |
+
+---
+
 ## 오픈소스 레이아웃
 
 | 경로 | 역할 |
@@ -43,7 +91,7 @@
 
 ### 서브커맨드 생략 → 암시적 `get`
 
-- `argv_for_dispatch` (`main.py`): 인자 없음 → **`-h`**. **`<key> <username>`** 뒤에 **`-f` / `-p`** 가 있으면 implicit **`put`**. 없으면 implicit **`get`** (**`-l`** 포함). **`-t`** 는 get.
+- `argv_for_dispatch` (`main.py`): 인자 없음 → **`-h`**. **`<key> <username>`** 뒤에 **`-f` / `-p`** 가 있으면 implicit **`put`**. 그 외 positional → implicit **`get`**. **`-l` / `-t`로 시작**하면 앞에 `get` 삽입. **`-l` 단독은 put이 아님.**
 
 ### `put`
 
@@ -52,7 +100,7 @@
 - vault 갱신 대상: 설정에 **`vault_path`** 가 있으면 **그 파일**에 merge; 없으면 **`PNG 부모 디렉터리/qr-vault.yaml`** (`vault_path_for_put`).
 - **`labels`**: `labels_for_vault_entry` — **cluster(key)·username** 을 항상 포함, PNG 파일명 `QR-…` 파싱 분 + **`put -l` / `--labels`** (콤마 구분) 추가 라벨(중복 제거).
 - **업데이트 조건** (`merge_qr_vault_yaml`): vault 키 **`<key>`** 아래에서 **username·labels(집합)** 이 모두 일치하는 엔트리가 **정확히 1개**일 때만 seed/password 갱신. 0개면 키가 비어 있을 때만 신규 생성; 키는 있는데 일치 항목 없으면 덮어쓰지 않고 **`VaultUpdateError`** + stderr **hints**(같은 key / username 일치 / labels 겹침 등 관련 엔트리 목록). 2개 이상 exact match도 hints로 전부 표시.
-- **`cotp put <key> <username> [-l …] [-f png]`** — **`-f` 생략** = 메타데이터만(기존 seed 유지). implicit put: **`<key> <username>`** + **`-f`/`-p`/`-l`**.
+- **`cotp put <key> <username> [-l …] [-f png]`** — **`-f` 생략** = 메타데이터만(기존 seed 유지). implicit put: **`<key> <username>`** + **`-f` 또는 `-p`**.
 - 파일명 패턴·KEY/username 없이 `put -f` 만 쓰면: 파일명이 `QR-<cluster>-<user>-<labels...>.png` 가 아니면 vault 스킵(경고).
 
 ### `get`
