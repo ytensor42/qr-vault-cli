@@ -34,24 +34,30 @@ Package name on PyPI: **`cotp-cli`** (`pip install cotp-cli` or locally `pip ins
 
 ### `cotp put` — read QR, print seed, update the vault
 
+Vault **`labels`** always include the **cluster key** and **username**; extra labels come from a `QR-<key>-<user>-<label>…` filename when present. **Updates** only when exactly **one** existing entry matches the same key, username, and label set (no overwrite on mismatch or ambiguity).
+
 ```bash
 cotp put
 cotp put -f QR-tp00-alice-admin.png
-cotp put -f /path/to/qr.png -p 'your-password'
+cotp put tp00 alice -f /path/to/qr.png      # read seed from QR PNG
+cotp put tp00 admin -l test                 # no -f: metadata-only (labels/password; keep seed)
+cotp put tp00 admin -l test -f qr.png
+cotp tp00 admin -l test                     # implicit put (-l / -f / -p present; else get)
 ```
 
 ### `cotp get` — TOTP from vault + password to clipboard
 
-If the first token is not `put`, `get`, `read`, or `random`, and it does not start with `-`, it is treated as **`get` with that argument list**. For example, `cotp tp00 alice` is the same as `cotp get tp00 alice`. (`cotp` and `cotp --help` behave as usual.)
+If the first token is not `put`, `get`, `read`, or `random`, and it does not start with `-`, it is treated as **`get` with that argument list**. For example, `cotp tp00 alice` is the same as `cotp get tp00 alice`. With **no arguments**, `cotp` prints help (same as `cotp -h`).
 
-- stdout: **`hh:mm:ss`** + space + **username** + space + **6-digit TOTP**.
-- The vault entry **`password`** is assumed to be **Base64 (UTF-8)**; the decoded **plaintext is copied to the clipboard**. With **`-t`**, the **TOTP code is also** copied (the **clipboard ends with TOTP**).
+- stdout (multi-line): `Timestamp:`, `Key:`, `Username:`, `OTP:` (only when a seed exists), `Labels:` (comma-separated).
+- The vault entry **`password`** is assumed to be **Base64 (UTF-8)**; the decoded **plaintext is copied to the clipboard**. With **`-t`**, only the **TOTP code** is copied (password is not copied).
 - On success, **stderr** prints `password is copied to clipboard` and/or `totp value is copied to clipboard` so you know what was copied.
 
 ```bash
 cotp get tp00
 cotp get tp00 alice
-cotp get tp00 alice admin,prod
+cotp get tp00 alice -l admin,prod
+cotp tp00 admin -l test
 cotp get tp00 alice -t
 ```
 

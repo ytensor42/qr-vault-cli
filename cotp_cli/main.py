@@ -21,6 +21,14 @@ _RANDOM_PASSWORD_LENGTH = 12
 _RANDOM_SPECIAL = "!@#$%^&*-_=+"
 
 
+class VaultUpdateError(ValueError):
+    """Vault put refused: not exactly one identity match; ``hints`` lists related entries."""
+
+    def __init__(self, message: str, hints: str = "") -> None:
+        super().__init__(message)
+        self.hints = hints
+
+
 def random_password_12() -> str:
     """Cryptographically random password: >=1 upper, lower, digit, special; length 12."""
     lower = string.ascii_lowercase
@@ -134,15 +142,209 @@ def parse_qr_filename(path: Path) -> tuple[str, str, list[str]] | None:
     return parts[0], parts[1], list(parts[2:])
 
 
+def _looks_like_vault_entry(value: object) -> bool:
+    return isinstance(value, dict) and ("seed" in value or "username" in value)
+
+
+def _iter_slots_under_key(value: object) -> list[tuple[int | None, dict]]:
+    """One mapping entry (``idx is None``) or each list element under a vault key."""
+    if _looks_like_vault_entry(value):
+        return [(None, value)]
+    if isinstance(value, list):
+        return [(i, item) for i, item in enumerate(value) if _looks_like_vault_entry(item)]
+    return []
+
+
+def entry_matches_identity(entry: dict, username: str, labels: list[str]) -> bool:
+    """True when entry username and labels multiset match the query."""
+    try:
+        vault_user = first_username_from_entry(entry)
+    except ValueError:
+        return False
+    if vault_user != username.strip():
+        return False
+    raw_labels = entry.get("labels") or []
+    if not isinstance(raw_labels, list):
+        return False
+    vault_labels = [str(x).strip() for x in raw_labels]
+    want = [str(x).strip() for x in labels]
+    return sorted(vault_labels) == sorted(want)
+
+
+def find_vault_entry_matches(
+    data: dict,
+    cluster_key: str,
+    username: str,
+    labels: list[str],
+) -> list[tuple[str, int | None]]:
+    """``(vault_key, slot_index)`` for entries under ``cluster_key`` matching identity."""
+    value = data.get(cluster_key)
+    if value is None:
+        return []
+    return [
+        (cluster_key, idx)
+        for idx, entry in _iter_slots_under_key(value)
+        if entry_matches_identity(entry, username, labels)
+    ]
+
+
+def find_vault_entry_matches_by_user(
+    data: dict,
+    cluster_key: str,
+    username: str,
+) -> list[tuple[str, int | None]]:
+    """Entries under ``cluster_key`` with matching username (labels ignored)."""
+    value = data.get(cluster_key)
+    if value is None:
+        return []
+    want = username.strip()
+    out: list[tuple[str, int | None]] = []
+    for idx, entry in _iter_slots_under_key(value):
+        try:
+            if first_username_from_entry(entry) == want:
+                out.append((cluster_key, idx))
+        except ValueError:
+            continue
+    return out
+
+
+def _seed_from_entry_or_empty(entry: dict) -> str:
+    seed = entry.get("seed")
+    return seed if isinstance(seed, str) else ""
+
+
+def iter_all_vault_slots(data: dict) -> list[tuple[str, int | None, dict]]:
+    """All ``(vault_key, slot_index, entry)`` in the vault mapping."""
+    out: list[tuple[str, int | None, dict]] = []
+    for key, value in data.items():
+        if not isinstance(key, str):
+            continue
+        for idx, entry in _iter_slots_under_key(value):
+            out.append((key, idx, entry))
+    return out
+
+
+def entry_labels_list(entry: dict) -> list[str]:
+    raw = entry.get("labels") or []
+    if not isinstance(raw, list):
+        return []
+    return [s for x in raw if (s := str(x).strip())]
+
+
+def _format_vault_hint_line(
+    key: str,
+    idx: int | None,
+    entry: dict,
+    reasons: list[str] | None = None,
+) -> str:
+    try:
+        vault_user = first_username_from_entry(entry)
+    except ValueError:
+        vault_user = "?"
+    lbl = entry_labels_list(entry)
+    slot = f"key={key!r}" if idx is None else f"key={key!r} index={idx}"
+    suffix = f"  ({'; '.join(reasons)})" if reasons else ""
+    return f"    {slot}  username={vault_user!r}  labels={lbl!r}{suffix}"
+
+
+def _partial_match_reasons(
+    key: str,
+    entry: dict,
+    cluster_key: str,
+    username: str,
+    labels: list[str],
+) -> list[str]:
+    want_user = username.strip()
+    want_labels = {s for x in labels if (s := str(x).strip())}
+    reasons: list[str] = []
+    if key == cluster_key:
+        reasons.append("same key")
+    try:
+        vault_user = first_username_from_entry(entry)
+    except ValueError:
+        vault_user = None
+    if vault_user == want_user:
+        reasons.append("username matches")
+    overlap = want_labels & set(entry_labels_list(entry))
+    if overlap:
+        reasons.append(f"shared labels: {sorted(overlap)!r}")
+    return reasons
+
+
+def build_vault_update_hints(
+    data: dict,
+    cluster_key: str,
+    username: str,
+    labels: list[str],
+    exact_matches: list[tuple[str, int | None]],
+) -> str:
+    """Human-readable related entries when an update is not allowed."""
+    lines = [
+        "vault update skipped; adjust key, username, or labels and retry.",
+        f"  requested: key={cluster_key!r}  username={username!r}  labels={labels!r}",
+    ]
+    exact_set = set(exact_matches)
+
+    if len(exact_matches) > 1:
+        lines.append(f"  exact matches ({len(exact_matches)}):")
+        for key, idx in exact_matches:
+            lines.append(_format_vault_hint_line(key, idx, _get_vault_slot(data, key, idx)))
+
+    related: list[tuple[str, int | None, dict, list[str]]] = []
+    for key, idx, entry in iter_all_vault_slots(data):
+        if (key, idx) in exact_set:
+            continue
+        reasons = _partial_match_reasons(key, entry, cluster_key, username, labels)
+        if reasons:
+            related.append((key, idx, entry, reasons))
+
+    if related:
+        lines.append("  related vault entries:")
+        for key, idx, entry, reasons in related:
+            lines.append(_format_vault_hint_line(key, idx, entry, reasons))
+    elif cluster_key in data and not _iter_slots_under_key(data[cluster_key]):
+        lines.append(f"  (vault key {cluster_key!r} exists but has no valid entries)")
+    elif cluster_key not in data and not related:
+        lines.append("  (no vault entries share this key, username, or labels)")
+
+    return "\n".join(lines)
+
+
+def _get_vault_slot(data: dict, key: str, idx: int | None) -> dict:
+    value = data[key]
+    if idx is None:
+        if not _looks_like_vault_entry(value):
+            raise ValueError(f"error: vault key {key!r} is not a valid entry")
+        return value
+    if not isinstance(value, list) or idx >= len(value):
+        raise ValueError(f"error: vault list slot missing under {key!r}")
+    entry = value[idx]
+    if not _looks_like_vault_entry(entry):
+        raise ValueError(f"error: vault list slot under {key!r} is not a valid entry")
+    return entry
+
+
+def _set_vault_slot(data: dict, key: str, idx: int | None, entry: dict) -> None:
+    if idx is None:
+        data[key] = entry
+        return
+    slot = data[key]
+    if not isinstance(slot, list):
+        raise ValueError(f"error: vault key {key!r} is not a list")
+    slot[idx] = entry
+
+
 def merge_qr_vault_yaml(
     vault_path: Path,
     cluster_name: str,
     username: str,
     labels: list[str],
-    seed: str,
+    seed: str | None,
     password: str | None,
+    *,
+    match_identity_labels: bool = True,
 ) -> None:
-    """Load or create ``qr-vault.yaml``; set cluster entry; preserve other top-level keys."""
+    """Merge into ``qr-vault.yaml``; update only when exactly one entry matches (see ``match_identity_labels``)."""
     if vault_path.is_file():
         raw = vault_path.read_text(encoding="utf-8")
         data = yaml.safe_load(raw) if raw.strip() else {}
@@ -154,20 +356,72 @@ def merge_qr_vault_yaml(
         msg = f"error: {vault_path} must be a YAML mapping (object) at the top level"
         raise ValueError(msg)
 
-    prev = data.get(cluster_name)
-    prev_pwd = ""
-    if isinstance(prev, dict):
+    if match_identity_labels:
+        matches = find_vault_entry_matches(data, cluster_name, username, labels)
+    else:
+        matches = find_vault_entry_matches_by_user(data, cluster_name, username)
+
+    if len(matches) != 1:
+        if len(matches) > 1:
+            if match_identity_labels:
+                msg = (
+                    f"error: {len(matches)} vault entries match key={cluster_name!r} "
+                    f"username={username!r} labels={labels!r}; refusing to update"
+                )
+            else:
+                msg = (
+                    f"error: {len(matches)} vault entries match key={cluster_name!r} "
+                    f"username={username!r}; refusing to update"
+                )
+        elif cluster_name in data:
+            if match_identity_labels:
+                msg = (
+                    f"error: vault key {cluster_name!r} exists but no entry matches "
+                    f"username={username!r} labels={labels!r}; refusing to overwrite"
+                )
+            else:
+                msg = (
+                    f"error: vault key {cluster_name!r} exists but no entry matches "
+                    f"username={username!r}; refusing to overwrite"
+                )
+        else:
+            msg = ""  # create path below
+        if msg:
+            hint_matches = (
+                matches
+                if match_identity_labels
+                else find_vault_entry_matches(data, cluster_name, username, labels)
+            )
+            hints = build_vault_update_hints(
+                data, cluster_name, username, labels, hint_matches
+            )
+            raise VaultUpdateError(msg, hints)
+
+    if len(matches) == 1:
+        key, idx = matches[0]
+        prev = _get_vault_slot(data, key, idx)
         raw_p = prev.get("password", "")
         prev_pwd = raw_p if isinstance(raw_p, str) else ""
+        seed_out = seed if seed is not None else _seed_from_entry_or_empty(prev)
+        new_entry = {
+            "seed": seed_out,
+            "username": username,
+            "password": password if password is not None else prev_pwd,
+            "labels": list(labels),
+        }
+        _set_vault_slot(data, key, idx, new_entry)
+    else:
+        if seed is None:
+            seed_out = ""
+        else:
+            seed_out = seed
+        data[cluster_name] = {
+            "seed": seed_out,
+            "username": username,
+            "password": password if password is not None else "",
+            "labels": list(labels),
+        }
 
-    pwd_out = password if password is not None else prev_pwd
-
-    data[cluster_name] = {
-        "seed": seed,
-        "username": username,
-        "password": pwd_out,
-        "labels": list(labels),
-    }
     text = yaml.safe_dump(
         data,
         sort_keys=False,
@@ -200,6 +454,76 @@ def load_qr_vault_mapping(path: Path) -> dict:
 
 def labels_from_csv(csv: str) -> list[str]:
     return [p.strip() for p in csv.split(",") if p.strip() != ""]
+
+
+def labels_for_vault_entry(cluster: str, username: str, extra: list[str]) -> list[str]:
+    """Vault ``labels``: cluster and username first, then extras (deduped, order kept)."""
+    out: list[str] = []
+    seen: set[str] = set()
+    for raw in (cluster, username, *extra):
+        label = str(raw).strip()
+        if not label or label in seen:
+            continue
+        seen.add(label)
+        out.append(label)
+    return out
+
+
+def query_labels_for_get(
+    cluster: str | None,
+    username: str | None,
+    labels_csv: str | None,
+) -> list[str]:
+    """Labels for ``get``: key+username+extras when both set; else CSV extras only."""
+    extra = labels_from_csv(labels_csv) if labels_csv is not None else []
+    if cluster is not None and username is not None:
+        return labels_for_vault_entry(cluster, username, extra)
+    return extra
+
+
+def entry_labels_match_exact(entry: dict, labels: list[str]) -> bool:
+    raw = entry.get("labels") or []
+    if not isinstance(raw, list):
+        return False
+    vault_labels = [s for x in raw if (s := str(x).strip())]
+    want = [s for x in labels if (s := str(x).strip())]
+    return sorted(vault_labels) == sorted(want)
+
+
+def entry_has_all_labels(entry: dict, labels: list[str]) -> bool:
+    want = {str(x).strip() for x in labels if str(x).strip()}
+    if not want:
+        return False
+    return want <= set(entry_labels_list(entry))
+
+
+def find_get_matches(
+    data: dict,
+    cluster: str | None,
+    username: str | None,
+    query_labels: list[str] | None,
+    *,
+    label_mode: str,
+) -> list[tuple[str, int | None, dict]]:
+    """``label_mode``: ``none`` | ``subset`` (vault labels ⊇ want) | ``exact`` (multiset equal)."""
+    matches: list[tuple[str, int | None, dict]] = []
+    for key, idx, entry in iter_all_vault_slots(data):
+        if cluster is not None and key != cluster:
+            continue
+        if username is not None:
+            try:
+                if first_username_from_entry(entry) != username.strip():
+                    continue
+            except ValueError:
+                continue
+        if label_mode == "subset":
+            if query_labels is None or not entry_has_all_labels(entry, query_labels):
+                continue
+        elif label_mode == "exact":
+            if query_labels is None or not entry_labels_match_exact(entry, query_labels):
+                continue
+        matches.append((key, idx, entry))
+    return matches
 
 
 def _seed_from_entry(entry: dict) -> str:
@@ -281,6 +605,67 @@ def totp_parts(seed: str) -> tuple[str, str]:
     return clock, code
 
 
+def entry_has_usable_seed(entry: dict) -> bool:
+    seed = entry.get("seed")
+    return isinstance(seed, str) and bool(seed.strip())
+
+
+def format_labels_csv_for_line(entry: dict) -> str:
+    """Comma-separated labels for one-line ``get`` output (no spaces around commas)."""
+    return ",".join(entry_labels_list(entry))
+
+
+def format_get_output_line(
+    vault_key: str,
+    username: str,
+    entry: dict,
+    *,
+    timestamp: str | None = None,
+    otp_code: str | None = None,
+) -> str:
+    """One line per vault entry: fields space-separated; labels comma-separated only."""
+    ts = timestamp if timestamp is not None else datetime.now().strftime("%H:%M:%S")
+    parts = [ts, vault_key, username]
+    if otp_code is not None:
+        parts.append(otp_code)
+    labels_csv = format_labels_csv_for_line(entry)
+    if labels_csv:
+        parts.append(labels_csv)
+    return " ".join(parts)
+
+
+def format_get_output(
+    vault_key: str,
+    username: str,
+    entry: dict,
+    *,
+    timestamp: str | None = None,
+    otp_code: str | None = None,
+) -> str:
+    """Multi-line stdout for a single ``get`` match (OTP line omitted when ``otp_code`` is None)."""
+    ts = timestamp if timestamp is not None else datetime.now().strftime("%H:%M:%S")
+    fields: list[tuple[str, str]] = [
+        ("Timestamp", ts),
+        ("Key", vault_key),
+        ("Username", username),
+    ]
+    if otp_code is not None:
+        fields.append(("OTP", otp_code))
+    fields.append(("Labels", ", ".join(entry_labels_list(entry))))
+    label_width = max(len(name) for name, _ in fields)
+    return "\n".join(f"{name:{label_width}}: {value}" for name, value in fields)
+
+
+def _otp_for_get_entry(entry: dict, default_clock: str) -> tuple[str, str | None]:
+    """Return ``(timestamp, otp_code)``; ``otp_code`` is None when the entry has no seed."""
+    if not entry_has_usable_seed(entry):
+        return default_clock, None
+    try:
+        return totp_parts(_seed_from_entry(entry))
+    except ValueError:
+        return default_clock, None
+
+
 def format_totp_with_clock(seed: str) -> str:
     clock, code = totp_parts(seed)
     return f"{clock} {code}"
@@ -324,31 +709,32 @@ def copy_text_to_clipboard(text: str) -> None:
     raise OSError(msg)
 
 
-def resolve_vault_query(
+def find_get_matches_for_query(
     data: dict,
-    cluster: str,
+    cluster: str | None,
     username: str | None,
-    labels_csv: str | None,
-) -> tuple[str, dict]:
-    if username is None and labels_csv is None:
-        seed = seed_for_cluster_name_only(data, cluster)
-    elif username is not None and labels_csv is None:
-        seed = seed_for_cluster_username_any_labels(data, cluster, username)
-    else:
-        seed = seed_for_cluster_user_labels(
-            data, cluster, username, labels_from_csv(labels_csv or "")
-        )
-    entry = data.get(cluster)
-    if not isinstance(entry, dict):
-        raise RuntimeError("internal: vault entry missing after match")
-    return seed, entry
+    query_labels: list[str] | None,
+    *,
+    strict_labels: bool = False,
+) -> list[tuple[str, int | None, dict]]:
+    """All vault slots matching a ``get`` query (may be empty)."""
+    if strict_labels:
+        if cluster is not None and username is not None:
+            label_mode = "exact"
+        else:
+            label_mode = "subset"
+        return find_get_matches(data, cluster, username, query_labels, label_mode=label_mode)
+    if cluster is not None:
+        return find_get_matches(data, cluster, username, None, label_mode="none")
+    raise ValueError("get requires a cluster (KEY) or --labels")
 
 
 def run_query(
-    cluster: str,
+    cluster: str | None,
     username: str | None,
-    labels_csv: str | None,
+    query_labels: list[str] | None,
     *,
+    strict_labels: bool = False,
     totp_to_clipboard: bool = False,
 ) -> None:
     path = default_vault_path()
@@ -362,41 +748,132 @@ def run_query(
         sys.exit(1)
 
     try:
-        seed, entry = resolve_vault_query(data, cluster, username, labels_csv)
-    except (KeyError, ValueError):
+        matches = find_get_matches_for_query(
+            data, cluster, username, query_labels, strict_labels=strict_labels
+        )
+    except ValueError:
         print(NO_MATCH_LINE)
         return
 
-    clock, code = totp_parts(seed)
-    show_user = username.strip() if username is not None else first_username_from_entry(entry)
-    print(f"{clock} {show_user} {code}")
+    if not matches:
+        print(NO_MATCH_LINE)
+        return
 
-    raw_pw = entry.get("password", "")
-    pw_field = raw_pw if isinstance(raw_pw, str) else ""
-    decoded_pw = decode_vault_password_for_clipboard(pw_field)
-    if pw_field.strip() and decoded_pw is None:
-        print(
-            "warning: password is not valid standard Base64 (UTF-8); skipping password clipboard",
-            file=sys.stderr,
+    if len(matches) > 1:
+        default_clock = datetime.now().strftime("%H:%M:%S")
+        for match_key, _idx, entry in matches:
+            try:
+                show_user = (
+                    username.strip()
+                    if username is not None
+                    else first_username_from_entry(entry)
+                )
+            except ValueError:
+                continue
+            clock, otp_code = _otp_for_get_entry(entry, default_clock)
+            print(format_get_output_line(match_key, show_user, entry, timestamp=clock, otp_code=otp_code))
+        return
+
+    match_key, _idx, entry = matches[0]
+    try:
+        show_user = (
+            username.strip() if username is not None else first_username_from_entry(entry)
         )
-    if decoded_pw is not None:
-        try:
-            copy_text_to_clipboard(decoded_pw)
-        except OSError as e:
-            print(f"warning: could not copy password to clipboard: {e}", file=sys.stderr)
-        else:
-            print("password is copied to clipboard", file=sys.stderr)
+    except ValueError:
+        print(NO_MATCH_LINE)
+        return
 
-    if totp_to_clipboard:
+    clock, otp_code = _otp_for_get_entry(entry, datetime.now().strftime("%H:%M:%S"))
+    print(format_get_output(match_key, show_user, entry, timestamp=clock, otp_code=otp_code))
+
+    if not totp_to_clipboard:
+        raw_pw = entry.get("password", "")
+        pw_field = raw_pw if isinstance(raw_pw, str) else ""
+        decoded_pw = decode_vault_password_for_clipboard(pw_field)
+        if pw_field.strip() and decoded_pw is None:
+            print(
+                "warning: password is not valid standard Base64 (UTF-8); skipping password clipboard",
+                file=sys.stderr,
+            )
+        if decoded_pw is not None:
+            try:
+                copy_text_to_clipboard(decoded_pw)
+            except OSError as e:
+                print(f"warning: could not copy password to clipboard: {e}", file=sys.stderr)
+            else:
+                print("password is copied to clipboard", file=sys.stderr)
+
+    if totp_to_clipboard and otp_code is not None:
         try:
-            copy_text_to_clipboard(code)
+            copy_text_to_clipboard(otp_code)
         except OSError as e:
             print(f"warning: could not copy TOTP to clipboard: {e}", file=sys.stderr)
         else:
             print("totp value is copied to clipboard", file=sys.stderr)
 
 
-def run_save_from_png(png_arg: Path | None, password: str | None) -> None:
+def run_put_metadata_only(
+    password: str | None,
+    *,
+    cluster: str,
+    username: str,
+    labels_csv: str | None = None,
+) -> None:
+    """Update vault metadata (labels/password) without reading a QR PNG; seed unchanged if present."""
+    cluster_name = cluster.strip()
+    username_val = username.strip()
+    if not cluster_name or not username_val:
+        print("error: cluster (key) and username must be non-empty", file=sys.stderr)
+        sys.exit(1)
+    cli_extra = labels_from_csv(labels_csv) if labels_csv is not None else []
+    vault_labels = labels_for_vault_entry(cluster_name, username_val, cli_extra)
+    vault_file = default_vault_path()
+    try:
+        merge_qr_vault_yaml(
+            vault_file,
+            cluster_name,
+            username_val,
+            vault_labels,
+            None,
+            password,
+            match_identity_labels=False,
+        )
+    except VaultUpdateError as e:
+        print(str(e), file=sys.stderr)
+        if e.hints:
+            print(e.hints, file=sys.stderr)
+        sys.exit(1)
+    except ValueError as e:
+        print(str(e), file=sys.stderr)
+        sys.exit(1)
+
+
+def run_save_from_png(
+    png_arg: Path | None,
+    password: str | None,
+    *,
+    cluster: str | None = None,
+    username: str | None = None,
+    labels_csv: str | None = None,
+) -> None:
+    if (cluster is None) != (username is None):
+        print("error: cluster (key) and username must be given together", file=sys.stderr)
+        sys.exit(1)
+    if png_arg is None:
+        if cluster is None or username is None:
+            print(
+                "error: put without -f requires KEY and username "
+                "(metadata-only: existing entry or no QR seed)",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        run_put_metadata_only(
+            password,
+            cluster=cluster,
+            username=username,
+            labels_csv=labels_csv,
+        )
+        return
     try:
         png_path = resolve_png_path(png_arg)
     except FileNotFoundError as e:
@@ -417,14 +894,30 @@ def run_save_from_png(png_arg: Path | None, password: str | None) -> None:
         print(s)
 
     parsed = parse_qr_filename(png_path)
-    if parsed is None:
+    filename_extra: list[str] = list(parsed[2]) if parsed is not None else []
+
+    if cluster is not None and username is not None:
+        cluster_name = cluster.strip()
+        username_val = username.strip()
+        if not cluster_name or not username_val:
+            print("error: cluster (key) and username must be non-empty", file=sys.stderr)
+            sys.exit(1)
+    elif parsed is not None:
+        cluster_name, username_val, filename_extra = parsed
+    else:
         print(
             "warning: filename is not QR-<cluster>-<username>-<label1>-...-<labeln>.png; "
-            "skipping qr-vault.yaml.",
+            "skipping qr-vault.yaml (use: cotp put <key> <username> [-l labels] [-f png]).",
             file=sys.stderr,
         )
         return
-    cluster_name, username, extra_labels = parsed
+
+    cli_extra = labels_from_csv(labels_csv) if labels_csv is not None else []
+    vault_labels = labels_for_vault_entry(
+        cluster_name,
+        username_val,
+        [*filename_extra, *cli_extra],
+    )
     seed_for_vault = seeds[0]
     if len(seeds) > 1:
         print(
@@ -436,11 +929,16 @@ def run_save_from_png(png_arg: Path | None, password: str | None) -> None:
         merge_qr_vault_yaml(
             vault_file,
             cluster_name,
-            username,
-            extra_labels,
+            username_val,
+            vault_labels,
             seed_for_vault,
             password,
         )
+    except VaultUpdateError as e:
+        print(str(e), file=sys.stderr)
+        if e.hints:
+            print(e.hints, file=sys.stderr)
+        sys.exit(1)
     except ValueError as e:
         print(str(e), file=sys.stderr)
         sys.exit(1)
@@ -471,19 +969,45 @@ def run_read_png(png_arg: Path | None) -> None:
 _COMMANDS = frozenset({"put", "get", "read", "random"})
 
 
+# Implicit ``put`` dispatch only; ``get`` also uses ``-l`` but must not imply ``put``.
+_PUT_IMPLICIT_FLAGS = frozenset({"-f", "--file", "-p", "--password"})
+
+
+def _argv_has_put_implicit_flags(argv: list[str]) -> bool:
+    return any(tok in _PUT_IMPLICIT_FLAGS for tok in argv)
+
+
+def looks_like_implicit_put(argv: list[str]) -> bool:
+    """``cotp <key> <username>`` with ``-f`` or ``-p`` → ``put`` (``-f`` omitted = metadata-only)."""
+    if not argv:
+        return False
+    first = argv[0]
+    if first in _COMMANDS or first.startswith("-"):
+        return False
+    if len(argv) < 2 or argv[1].startswith("-"):
+        return False
+    if "-t" in argv or "--totp-clipboard" in argv:
+        return False
+    return _argv_has_put_implicit_flags(argv)
+
+
 def argv_for_dispatch(argv: list[str] | None) -> list[str]:
-    """If the first token is not a subcommand and not a global flag, prepend ``get``."""
+    """No args → help; implicit ``put`` when ``<key> <username>`` + put flags; else implicit ``get``."""
     if argv is None:
         argv = sys.argv[1:]
     else:
         argv = list(argv)
     if not argv:
-        return ["get"]
+        return ["-h"]
     first = argv[0]
     if first in _COMMANDS:
         return argv
     if first.startswith("-"):
+        if any(t in argv for t in ("-l", "--labels", "-t", "--totp-clipboard")):
+            return ["get", *argv]
         return argv
+    if looks_like_implicit_put(argv):
+        return ["put", *argv]
     return ["get", *argv]
 
 
@@ -499,11 +1023,24 @@ def build_parser() -> argparse.ArgumentParser:
         help="Decode QR PNG and merge into the vault (beside the PNG, or vault_path in config).",
     )
     p_put.add_argument(
+        "cluster",
+        nargs="?",
+        default=None,
+        metavar="KEY",
+        help="vault top-level key (with username; labels include key and username)",
+    )
+    p_put.add_argument(
+        "username",
+        nargs="?",
+        default=None,
+        help="vault username (requires KEY when set)",
+    )
+    p_put.add_argument(
         "-f",
         "--file",
         type=Path,
         default=None,
-        help="PNG path (default: newest .png under configured qr_image_dir or ~/Downloads/Screenshots).",
+        help="PNG with QR code (omit to update vault metadata only; requires KEY and username).",
     )
     p_put.add_argument(
         "-p",
@@ -512,18 +1049,32 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="PWD",
         help="Password in vault entry (omit on update to keep existing).",
     )
+    p_put.add_argument(
+        "-l",
+        "--labels",
+        default=None,
+        metavar="LABELS",
+        help="Comma-separated extra labels (key and username are always stored too).",
+    )
 
     p_get = sub.add_parser(
         "get",
         help="Print TOTP; copy Base64-decoded password to clipboard; -t also copies TOTP.",
     )
-    p_get.add_argument("cluster", help="cluster_name (YAML top-level key)")
-    p_get.add_argument("username", nargs="?", default=None, help="optional username")
     p_get.add_argument(
-        "labels_csv",
+        "cluster",
         nargs="?",
         default=None,
-        help="optional comma-separated labels (use '' for none, requires username)",
+        metavar="KEY",
+        help="optional vault top-level key",
+    )
+    p_get.add_argument("username", nargs="?", default=None, help="optional username")
+    p_get.add_argument(
+        "-l",
+        "--labels",
+        default=None,
+        metavar="LABELS",
+        help="Comma-separated labels (with KEY+username: exact set; else vault must include all)",
     )
     p_get.add_argument(
         "-t",
@@ -558,14 +1109,27 @@ def main(argv: list[str] | None = None) -> None:
     args = parser.parse_args(argv_for_dispatch(argv))
 
     if args.command == "put":
-        run_save_from_png(args.file, args.password)
+        if (args.cluster is None) != (args.username is None):
+            parser.error("put: KEY and username must be given together")
+        run_save_from_png(
+            args.file,
+            args.password,
+            cluster=args.cluster,
+            username=args.username,
+            labels_csv=args.labels,
+        )
     elif args.command == "get":
-        if args.labels_csv is not None and args.username is None:
-            parser.error("get: username is required when labels_csv is given")
+        if args.cluster is None and args.labels is None:
+            parser.error("get: KEY and/or --labels required")
+        strict_labels = args.labels is not None
+        get_labels: list[str] | None = None
+        if strict_labels:
+            get_labels = query_labels_for_get(args.cluster, args.username, args.labels)
         run_query(
             args.cluster,
             args.username,
-            args.labels_csv,
+            get_labels,
+            strict_labels=strict_labels,
             totp_to_clipboard=args.totp_clipboard,
         )
     elif args.command == "read":

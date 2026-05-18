@@ -8,10 +8,14 @@ import pytest
 from cotp_cli.main import main
 
 
-def test_main_empty_argv_is_get_missing_cluster() -> None:
-    """No args → implicit ``get`` → argparse still requires ``cluster``."""
-    with pytest.raises(SystemExit):
+def test_main_empty_argv_prints_help(capsys: pytest.CaptureFixture[str]) -> None:
+    """No args → same as ``-h``."""
+    with pytest.raises(SystemExit) as exc_info:
         main([])
+    assert exc_info.value.code == 0
+    out = capsys.readouterr().out
+    assert "usage:" in out
+    assert "cotp" in out
 
 
 def test_main_implicit_get_equivalent_to_get_keyword(
@@ -34,7 +38,7 @@ def test_main_implicit_get_equivalent_to_get_keyword(
                     "username": "u",
                     "seed": "JBSWY3DPEHPK3PXP",
                     "password": pw_b64,
-                    "labels": [],
+                    "labels": ["tp", "u"],
                 },
             },
         ),
@@ -61,10 +65,155 @@ def test_main_implicit_get_equivalent_to_get_keyword(
     assert out_explicit == out_implicit
     assert err_explicit == err_implicit
     assert copies_explicit == copies_implicit
-    assert out_explicit.strip() == "01:02:03 u 999111"
+    assert "Timestamp: 01:02:03" in out_explicit
+    assert "Key      : tp" in out_explicit
+    assert "Username : u" in out_explicit
+    assert "OTP      : 999111" in out_explicit
     assert copies_explicit == ["hunter2"]
     assert "password is copied to clipboard" in err_explicit
     assert "totp value is copied to clipboard" not in err_explicit
+
+
+def test_main_implicit_put_dispatches_to_put(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import yaml  # noqa: PLC0415
+
+    import cotp_cli.main as vm
+
+    png = tmp_path / "cap.png"
+    png.write_bytes(b"x")
+    vault = tmp_path / "qr-vault.yaml"
+    monkeypatch.setattr(vm, "extract_seeds_from_png", lambda _p: ["SEEDY"])
+    monkeypatch.setattr(vm, "vault_path_for_put", lambda _p: vault)
+
+    main(["lab", "bob", "-f", str(png)])
+
+    data = yaml.safe_load(vault.read_text(encoding="utf-8"))
+    assert data["lab"]["username"] == "bob"
+    assert data["lab"]["labels"] == ["lab", "bob"]
+
+
+def test_main_implicit_put_without_file_flag(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import yaml  # noqa: PLC0415
+
+    import cotp_cli.main as vm
+
+    vault = tmp_path / "qr-vault.yaml"
+    vault.write_text(
+        yaml.safe_dump(
+            {
+                "tp00": {
+                    "username": "admin",
+                    "seed": "KEEPSEED",
+                    "password": "",
+                    "labels": ["tp00", "admin"],
+                },
+            },
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(vm, "default_vault_path", lambda: vault)
+    called: list[object] = []
+
+    def _no_extract(_p: object) -> list[str]:
+        called.append(_p)
+        return ["SHOULD_NOT_RUN"]
+
+    monkeypatch.setattr(vm, "extract_seeds_from_png", _no_extract)
+
+    main(["put", "tp00", "admin", "-l", "test"])
+
+    assert called == []
+    data = yaml.safe_load(vault.read_text(encoding="utf-8"))
+    assert data["tp00"]["seed"] == "KEEPSEED"
+    assert data["tp00"]["labels"] == ["tp00", "admin", "test"]
+
+
+def test_main_get_key_and_labels_without_username(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    import yaml  # noqa: PLC0415
+
+    import cotp_cli.main as vm
+
+    vault = tmp_path / "qr-vault.yaml"
+    vault.write_text(
+        yaml.safe_dump(
+            {
+                "tp00": {
+                    "username": "admin",
+                    "seed": "JBSWY3DPEHPK3PXP",
+                    "labels": ["tp00", "admin", "test"],
+                },
+            },
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(vm, "default_vault_path", lambda: vault)
+    monkeypatch.setattr(vm, "copy_text_to_clipboard", lambda _t: None)
+    monkeypatch.setattr(vm, "totp_parts", lambda _seed: ("01:02:03", "999111"))
+
+    main(["tp00", "-l", "test"])
+
+    assert "999111" in capsys.readouterr().out
+
+
+def test_main_get_accepts_labels_flag(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    import yaml  # noqa: PLC0415
+
+    import cotp_cli.main as vm
+
+    vault = tmp_path / "qr-vault.yaml"
+    vault.write_text(
+        yaml.safe_dump(
+            {
+                "tp00": {
+                    "username": "admin",
+                    "seed": "JBSWY3DPEHPK3PXP",
+                    "labels": ["tp00", "admin", "test"],
+                },
+            },
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(vm, "default_vault_path", lambda: vault)
+    monkeypatch.setattr(vm, "copy_text_to_clipboard", lambda _t: None)
+    monkeypatch.setattr(vm, "totp_parts", lambda _seed: ("01:02:03", "999111"))
+
+    main(["tp00", "admin", "-l", "test"])
+
+    assert "999111" in capsys.readouterr().out
+
+
+def test_main_put_accepts_labels_flag(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import yaml  # noqa: PLC0415
+
+    import cotp_cli.main as vm
+
+    png = tmp_path / "q.png"
+    png.write_bytes(b"x")
+    vault = tmp_path / "qr-vault.yaml"
+    monkeypatch.setattr(vm, "extract_seeds_from_png", lambda _p: ["S"])
+    monkeypatch.setattr(vm, "vault_path_for_put", lambda _p: vault)
+
+    main(["put", "lab", "bob", "-l", "test", "-f", str(png)])
+
+    data = yaml.safe_load(vault.read_text(encoding="utf-8"))
+    assert data["lab"]["labels"] == ["lab", "bob", "test"]
 
 
 def test_main_random_prints_plain_and_base64(capsys: pytest.CaptureFixture[str]) -> None:

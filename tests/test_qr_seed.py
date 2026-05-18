@@ -6,16 +6,29 @@ from pathlib import Path
 import pytest
 
 from cotp_cli.main import (
+    VaultUpdateError,
+    argv_for_dispatch,
+    build_vault_update_hints,
     decode_vault_password_for_clipboard,
+    entry_matches_identity,
     extract_seeds_from_png,
+    find_vault_entry_matches,
+    format_get_output,
+    format_get_output_line,
     format_totp_with_clock,
+    labels_for_vault_entry,
     labels_from_csv,
+    looks_like_implicit_put,
     merge_qr_vault_yaml,
+    NO_MATCH_LINE,
     otpauth_secret,
     parse_qr_filename,
+    query_labels_for_get,
     random_password_12,
     resolve_png_path,
     run_query,
+    run_put_metadata_only,
+    run_save_from_png,
     seed_for_cluster_name_only,
     seed_for_cluster_user_labels,
     seed_for_cluster_username_any_labels,
@@ -44,7 +57,7 @@ def test_decode_vault_password_for_clipboard() -> None:
     assert decode_vault_password_for_clipboard(bad_utf8_b64) is None
 
 
-def test_run_query_clipboard_password_then_totp_with_t(
+def test_run_query_clipboard_totp_only_with_t(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -63,7 +76,7 @@ def test_run_query_clipboard_password_then_totp_with_t(
                     "username": "u",
                     "seed": "JBSWY3DPEHPK3PXP",
                     "password": pw_b64,
-                    "labels": [],
+                    "labels": ["tp", "u"],
                 },
             },
         ),
@@ -76,13 +89,13 @@ def test_run_query_clipboard_password_then_totp_with_t(
 
     run_query("tp", "u", None, totp_to_clipboard=True)
 
-    assert copies == ["hunter2", "999111"]
+    assert copies == ["999111"]
     cap = capsys.readouterr()
-    assert cap.out.strip() == "01:02:03 u 999111"
-    assert cap.err.strip().splitlines() == [
-        "password is copied to clipboard",
-        "totp value is copied to clipboard",
-    ]
+    out = cap.out.strip()
+    assert out == format_get_output(
+        "tp", "u", {"username": "u", "labels": ["tp", "u"]}, timestamp="01:02:03", otp_code="999111"
+    )
+    assert cap.err.strip() == "totp value is copied to clipboard"
 
 
 def test_run_query_clipboard_password_notice_only_without_t(
@@ -104,7 +117,7 @@ def test_run_query_clipboard_password_notice_only_without_t(
                     "username": "u",
                     "seed": "JBSWY3DPEHPK3PXP",
                     "password": pw_b64,
-                    "labels": [],
+                    "labels": ["tp", "u"],
                 },
             },
         ),
@@ -136,7 +149,7 @@ def test_run_query_clipboard_totp_notice_only_when_no_password(
                 "tp": {
                     "username": "u",
                     "seed": "JBSWY3DPEHPK3PXP",
-                    "labels": [],
+                    "labels": ["tp", "u"],
                 },
             },
         ),
@@ -152,9 +165,287 @@ def test_run_query_clipboard_totp_notice_only_when_no_password(
     assert cap.err.strip() == "totp value is copied to clipboard"
 
 
+def test_run_query_multiple_matches_space_delimited_lines(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    import yaml  # noqa: PLC0415
+
+    import cotp_cli.main as vm
+
+    vault = tmp_path / "qr-vault.yaml"
+    vault.write_text(
+        yaml.safe_dump(
+            {
+                "tp00": {
+                    "username": "admin",
+                    "seed": "JBSWY3DPEHPK3PXP",
+                    "labels": ["tp00", "admin", "shared"],
+                },
+                "tp01": {
+                    "username": "bob",
+                    "seed": "JBSWY3DPEHPK3PXP",
+                    "labels": ["tp01", "bob", "shared"],
+                },
+            },
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(vm, "default_vault_path", lambda: vault)
+    copies: list[str] = []
+    monkeypatch.setattr(vm, "copy_text_to_clipboard", lambda t: copies.append(t))
+    monkeypatch.setattr(vm, "totp_parts", lambda _seed: ("01:02:03", "999111"))
+
+    run_query(None, None, ["shared"], strict_labels=True)
+
+    cap = capsys.readouterr()
+    assert copies == []
+    assert cap.err == ""
+    lines = [ln for ln in cap.out.strip().split("\n") if ln]
+    assert len(lines) == 2
+    for line in lines:
+        labels_field = line.rsplit(" ", 1)[-1]
+        assert ", " not in labels_field
+        assert labels_field.count(",") >= 1
+    assert lines[0] == format_get_output_line(
+        "tp00",
+        "admin",
+        {"username": "admin", "labels": ["tp00", "admin", "shared"]},
+        timestamp="01:02:03",
+        otp_code="999111",
+    )
+    assert lines[1] == format_get_output_line(
+        "tp01",
+        "bob",
+        {"username": "bob", "labels": ["tp01", "bob", "shared"]},
+        timestamp="01:02:03",
+        otp_code="999111",
+    )
+
+
+def test_format_get_output_omits_otp_without_seed() -> None:
+    out = format_get_output(
+        "tp00",
+        "admin",
+        {"username": "admin", "seed": "", "labels": ["tp00", "admin"]},
+        timestamp="12:00:00",
+        otp_code=None,
+    )
+    assert "OTP:" not in out
+    assert "Labels   : tp00, admin" in out
+
+
 def test_labels_from_csv() -> None:
     assert labels_from_csv("a, b , c") == ["a", "b", "c"]
     assert labels_from_csv("") == []
+
+
+def test_labels_for_vault_entry_dedupes_and_orders() -> None:
+    assert labels_for_vault_entry("tp00", "alice", ["admin", "tp00"]) == [
+        "tp00",
+        "alice",
+        "admin",
+    ]
+
+
+def test_query_labels_for_get_includes_key_username_when_extras_empty() -> None:
+    assert query_labels_for_get("tp00", "alice", None) == ["tp00", "alice"]
+    assert query_labels_for_get("tp00", "alice", "") == ["tp00", "alice"]
+    assert query_labels_for_get("tp00", "alice", "admin,prod") == [
+        "tp00",
+        "alice",
+        "admin",
+        "prod",
+    ]
+
+
+def test_run_query_labels_only_subset_match(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    import yaml  # noqa: PLC0415
+
+    import cotp_cli.main as vm
+
+    vault = tmp_path / "qr-vault.yaml"
+    vault.write_text(
+        yaml.safe_dump(
+            {
+                "tp00": {
+                    "username": "admin",
+                    "seed": "JBSWY3DPEHPK3PXP",
+                    "labels": ["tp00", "admin", "test"],
+                },
+            },
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(vm, "default_vault_path", lambda: vault)
+    monkeypatch.setattr(vm, "copy_text_to_clipboard", lambda _t: None)
+    monkeypatch.setattr(vm, "totp_parts", lambda _seed: ("01:02:03", "999111"))
+
+    run_query("tp00", None, ["test"], strict_labels=True)
+    assert "999111" in capsys.readouterr().out
+
+    run_query(None, None, ["test"], strict_labels=True)
+    assert "999111" in capsys.readouterr().out
+
+
+def test_run_query_strict_labels_requires_full_label_set(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    import yaml  # noqa: PLC0415
+
+    import cotp_cli.main as vm
+
+    vault = tmp_path / "qr-vault.yaml"
+    vault.write_text(
+        yaml.safe_dump(
+            {
+                "tp00": {
+                    "username": "admin",
+                    "seed": "JBSWY3DPEHPK3PXP",
+                    "labels": ["tp00", "admin", "test"],
+                },
+            },
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(vm, "default_vault_path", lambda: vault)
+    monkeypatch.setattr(vm, "copy_text_to_clipboard", lambda _t: None)
+    monkeypatch.setattr(vm, "totp_parts", lambda _seed: ("01:02:03", "999111"))
+
+    run_query("tp00", "admin", None, strict_labels=False)
+    assert "999111" in capsys.readouterr().out
+
+    run_query(
+        "tp00",
+        "admin",
+        query_labels_for_get("tp00", "admin", None),
+        strict_labels=True,
+    )
+    assert capsys.readouterr().out.strip() == NO_MATCH_LINE
+
+    run_query(
+        "tp00",
+        "admin",
+        query_labels_for_get("tp00", "admin", "test"),
+        strict_labels=True,
+    )
+    assert "999111" in capsys.readouterr().out
+
+
+def test_argv_for_dispatch_implicit_put() -> None:
+    assert looks_like_implicit_put(["tp00", "alice", "-f", "x.png"])
+    assert argv_for_dispatch(["tp00", "alice", "-f", "x.png"]) == [
+        "put",
+        "tp00",
+        "alice",
+        "-f",
+        "x.png",
+    ]
+    assert not looks_like_implicit_put(["tp00", "admin", "-l", "test"])
+    assert argv_for_dispatch(["tp00", "admin", "-l", "test"]) == [
+        "get",
+        "tp00",
+        "admin",
+        "-l",
+        "test",
+    ]
+    assert argv_for_dispatch(["tp00", "alice"]) == ["get", "tp00", "alice"]
+    assert not looks_like_implicit_put(["tp00", "-f", "x.png"])
+    assert not looks_like_implicit_put(["tp00", "alice", "-t"])
+
+
+def test_run_save_from_png_explicit_key_user_labels(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import yaml  # noqa: PLC0415
+
+    import cotp_cli.main as vm
+
+    png = tmp_path / "any-name.png"
+    png.write_bytes(b"x")
+    vault = tmp_path / "qr-vault.yaml"
+    monkeypatch.setattr(vm, "extract_seeds_from_png", lambda _p: ["SEEDX"])
+    monkeypatch.setattr(vm, "vault_path_for_put", lambda _p: vault)
+
+    run_save_from_png(png, None, cluster="tp00", username="alice")
+
+    data = yaml.safe_load(vault.read_text(encoding="utf-8"))
+    assert data["tp00"]["seed"] == "SEEDX"
+    assert data["tp00"]["username"] == "alice"
+    assert data["tp00"]["labels"] == ["tp00", "alice"]
+
+
+def test_run_put_metadata_only_updates_labels_preserves_seed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import yaml  # noqa: PLC0415
+
+    import cotp_cli.main as vm
+
+    vault = tmp_path / "qr-vault.yaml"
+    vault.write_text(
+        yaml.safe_dump(
+            {
+                "tp00": {
+                    "username": "admin",
+                    "seed": "SEEDKEEP",
+                    "password": "old",
+                    "labels": ["tp00", "admin"],
+                },
+            },
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(vm, "default_vault_path", lambda: vault)
+
+    run_put_metadata_only(None, cluster="tp00", username="admin", labels_csv="test")
+
+    data = yaml.safe_load(vault.read_text(encoding="utf-8"))
+    assert data["tp00"]["seed"] == "SEEDKEEP"
+    assert data["tp00"]["labels"] == ["tp00", "admin", "test"]
+    assert data["tp00"]["password"] == "old"
+
+
+def test_run_put_metadata_only_requires_key_user(capsys: pytest.CaptureFixture[str]) -> None:
+    with pytest.raises(SystemExit) as exc:
+        run_save_from_png(None, None)
+    assert exc.value.code == 1
+    assert "without -f requires KEY and username" in capsys.readouterr().err
+
+
+def test_run_save_from_png_cli_labels(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import yaml  # noqa: PLC0415
+
+    import cotp_cli.main as vm
+
+    png = tmp_path / "any.png"
+    png.write_bytes(b"x")
+    vault = tmp_path / "qr-vault.yaml"
+    monkeypatch.setattr(vm, "extract_seeds_from_png", lambda _p: ["SEEDZ"])
+    monkeypatch.setattr(vm, "vault_path_for_put", lambda _p: vault)
+
+    run_save_from_png(
+        png,
+        None,
+        cluster="tp00",
+        username="admin",
+        labels_csv="test,prod",
+    )
+
+    data = yaml.safe_load(vault.read_text(encoding="utf-8"))
+    assert data["tp00"]["labels"] == ["tp00", "admin", "test", "prod"]
 
 
 def test_seed_for_cluster_user_labels_ok_and_order_insensitive() -> None:
@@ -244,28 +535,95 @@ def test_merge_qr_vault_yaml_create_merge_update(tmp_path: Path) -> None:
     import yaml  # noqa: PLC0415
 
     vault = tmp_path / "qr-vault.yaml"
-    merge_qr_vault_yaml(vault, "tp00", "alice", ["admin"], "SEED1", None)
-    merge_qr_vault_yaml(vault, "other", "bob", ["x", "y"], "SEED2", "pw2")
-    merge_qr_vault_yaml(vault, "tp00", "alice", ["admin", "prod"], "SEED3", None)
+    labels_alice = labels_for_vault_entry("tp00", "alice", ["admin"])
+    merge_qr_vault_yaml(vault, "tp00", "alice", labels_alice, "SEED1", None)
+    merge_qr_vault_yaml(vault, "other", "bob", labels_for_vault_entry("other", "bob", ["x", "y"]), "SEED2", "pw2")
+    merge_qr_vault_yaml(vault, "tp00", "alice", labels_alice, "SEED3", None)
 
     data = yaml.safe_load(vault.read_text(encoding="utf-8"))
     assert data["tp00"]["seed"] == "SEED3"
     assert data["tp00"]["username"] == "alice"
     assert data["tp00"]["password"] == ""
-    assert data["tp00"]["labels"] == ["admin", "prod"]
+    assert data["tp00"]["labels"] == labels_alice
     assert data["other"]["seed"] == "SEED2"
     assert data["other"]["username"] == "bob"
     assert data["other"]["password"] == "pw2"
+
+
+def test_merge_qr_vault_yaml_rejects_label_change(tmp_path: Path) -> None:
+    vault = tmp_path / "qr-vault.yaml"
+    labels_alice = labels_for_vault_entry("tp00", "alice", ["admin"])
+    merge_qr_vault_yaml(vault, "tp00", "alice", labels_alice, "SEED1", None)
+    want = labels_for_vault_entry("tp00", "alice", ["admin", "prod"])
+    with pytest.raises(VaultUpdateError, match="no entry matches") as exc:
+        merge_qr_vault_yaml(vault, "tp00", "alice", want, "SEED3", None)
+    assert "tp00" in exc.value.hints
+    assert "alice" in exc.value.hints
+    assert "admin" in exc.value.hints
+    assert "same key" in exc.value.hints
+
+
+def test_merge_qr_vault_yaml_rejects_ambiguous_matches(tmp_path: Path) -> None:
+    import yaml  # noqa: PLC0415
+
+    vault = tmp_path / "qr-vault.yaml"
+    labels = labels_for_vault_entry("tp00", "alice", [])
+    dup = {"username": "alice", "seed": "A", "password": "", "labels": labels}
+    vault.write_text(
+        yaml.safe_dump({"tp00": [dup, dict(dup)]}, sort_keys=False),
+        encoding="utf-8",
+    )
+    with pytest.raises(VaultUpdateError, match="2 vault entries match") as exc:
+        merge_qr_vault_yaml(vault, "tp00", "alice", labels, "SEED2", None)
+    assert "exact matches (2)" in exc.value.hints
+
+
+def test_build_vault_update_hints_lists_username_and_label_overlap() -> None:
+    import yaml  # noqa: PLC0415
+
+    data = yaml.safe_load(
+        """
+        tp00:
+          username: admin
+          seed: X
+          labels: []
+        other:
+          username: alice
+          seed: Y
+          labels: [other, alice, shared]
+        """
+    )
+    want = labels_for_vault_entry("tp00", "alice", ["shared"])
+    hints = build_vault_update_hints(data, "tp00", "alice", want, [])
+    assert "key='tp00'" in hints
+    assert "admin" in hints
+    assert "key='other'" in hints
+    assert "username matches" in hints
+    assert "shared labels" in hints
+
+
+def test_find_vault_entry_matches_list_slot() -> None:
+    labels = labels_for_vault_entry("tp00", "alice", ["admin"])
+    data = {
+        "tp00": [
+            {"username": "bob", "seed": "X", "labels": labels_for_vault_entry("tp00", "bob", [])},
+            {"username": "alice", "seed": "Y", "labels": labels},
+        ],
+    }
+    assert find_vault_entry_matches(data, "tp00", "alice", labels) == [("tp00", 1)]
+    assert entry_matches_identity(data["tp00"][1], "alice", labels)
 
 
 def test_merge_qr_vault_yaml_password_preserve_and_override(tmp_path: Path) -> None:
     import yaml  # noqa: PLC0415
 
     vault = tmp_path / "qr-vault.yaml"
-    merge_qr_vault_yaml(vault, "c", "u", [], "S1", "secret1")
-    merge_qr_vault_yaml(vault, "c", "u2", ["l"], "S2", None)
+    labels = labels_for_vault_entry("c", "u", [])
+    merge_qr_vault_yaml(vault, "c", "u", labels, "S1", "secret1")
+    with pytest.raises(VaultUpdateError, match="no entry matches"):
+        merge_qr_vault_yaml(vault, "c", "u2", labels_for_vault_entry("c", "u2", ["l"]), "S2", None)
     assert yaml.safe_load(vault.read_text())["c"]["password"] == "secret1"
-    merge_qr_vault_yaml(vault, "c", "u2", ["l"], "S3", "newpw")
+    merge_qr_vault_yaml(vault, "c", "u", labels, "S3", "newpw")
     assert yaml.safe_load(vault.read_text())["c"]["password"] == "newpw"
 
 

@@ -1,4 +1,4 @@
-# AGENTS.md — **qr-vault-cli** / **cotp-cli** (`otp`)
+# AGENTS.md — **qr-vault-cli** / **cotp-cli** (`cotp`)
 
 이 파일은 **에이전트가 이 저장소를 다시 열었을 때** 빠르게 맥락을 잡도록 쓴다. 사용자용 설치·명령 예시는 [`README.md`](README.md) (영문), [`README-ko.md`](README-ko.md) (한글). 예시 설정 스켈레톤은 [`config.example.yaml`](config.example.yaml).
 
@@ -6,7 +6,7 @@
 
 ## 한 줄 요약
 
-**GitHub:** https://github.com/ytensor42/qr-vault-cli · **PyPI** **`cotp-cli`** · 로컬 폴더명 **`otp`** (역사적) · import **`cotp_cli`** · 콘솔 **`cotp`** (`python -m cotp_cli`). QR PNG에서 otpauth 시드를 읽고, **`qr-vault.yaml`** vault와 **TOTP `get`**, **`random`** 을 다룬다.
+**GitHub:** https://github.com/ytensor42/qr-vault-cli · **PyPI** **`cotp-cli`** · 로컬 경로 **`~/Projects/cotp`** · import **`cotp_cli`** · 콘솔 **`cotp`** (`python -m cotp_cli`). QR PNG에서 otpauth 시드를 읽고, **`qr-vault.yaml`** vault와 **TOTP `get`**, **`random`** 을 다룬다.
 
 ---
 
@@ -43,21 +43,24 @@
 
 ### 서브커맨드 생략 → 암시적 `get`
 
-- `argv_for_dispatch` (`main.py`): 첫 토큰이 `put` / `get` / `read` / `random` 이 **아니고** `-` 로 시작하지 않으면 앞에 **`get`** 을 붙인다.
-- 인자 없음 `cotp` → `get` 만 남음 → `cluster` 필수라 **argparse가 실패**한다.
+- `argv_for_dispatch` (`main.py`): 인자 없음 → **`-h`**. **`<key> <username>`** 뒤에 **`-f` / `-p`** 가 있으면 implicit **`put`**. 없으면 implicit **`get`** (**`-l`** 포함). **`-t`** 는 get.
 
 ### `put`
 
-- PNG: `resolve_png_path` — 기본은 **`qr_image_dir`** (설정) 또는 `~/Downloads/Screenshots` 에서 최신 `.png`; `-f` 는 절대 경로 또는 위 디렉터리 기준 상대.
+- **`-f` 있음:** `resolve_png_path` — QR PNG에서 시드 추출·stdout 출력·vault merge (`match_identity_labels=True`, key+username+labels 일치 1건).
+- **`-f` 없음:** `run_put_metadata_only` — PNG·폴더 스캔 없음. **KEY+username 필수**. vault는 `default_vault_path()`. **key+username** 으로 1건 찾아 **labels/password** 만 갱신, **seed 유지**. 신규 키면 seed `""` 로 생성(QR 없는 항목).
 - vault 갱신 대상: 설정에 **`vault_path`** 가 있으면 **그 파일**에 merge; 없으면 **`PNG 부모 디렉터리/qr-vault.yaml`** (`vault_path_for_put`).
-- 파일명이 `QR-<cluster>-<user>-<labels...>.png` 패턴이 아니면 vault 스킵(경고만).
+- **`labels`**: `labels_for_vault_entry` — **cluster(key)·username** 을 항상 포함, PNG 파일명 `QR-…` 파싱 분 + **`put -l` / `--labels`** (콤마 구분) 추가 라벨(중복 제거).
+- **업데이트 조건** (`merge_qr_vault_yaml`): vault 키 **`<key>`** 아래에서 **username·labels(집합)** 이 모두 일치하는 엔트리가 **정확히 1개**일 때만 seed/password 갱신. 0개면 키가 비어 있을 때만 신규 생성; 키는 있는데 일치 항목 없으면 덮어쓰지 않고 **`VaultUpdateError`** + stderr **hints**(같은 key / username 일치 / labels 겹침 등 관련 엔트리 목록). 2개 이상 exact match도 hints로 전부 표시.
+- **`cotp put <key> <username> [-l …] [-f png]`** — **`-f` 생략** = 메타데이터만(기존 seed 유지). implicit put: **`<key> <username>`** + **`-f`/`-p`/`-l`**.
+- 파일명 패턴·KEY/username 없이 `put -f` 만 쓰면: 파일명이 `QR-<cluster>-<user>-<labels...>.png` 가 아니면 vault 스킵(경고).
 
 ### `get`
 
-- **stdout 한 줄:** `HH:MM:SS <username> <6자리 TOTP>`.
-  - CLI에 `username` 이 있으면 그 값( strip ); 없으면 vault entry 의 `first_username_from_entry`.
-- **클립보드:** `password` 필드는 **표준 Base64(UTF-8)** 로 가정 → 디코드 평문 복사. **`-t`** 이면 TOTP 코드도 복사(클립보드 **마지막** 값이 TOTP).
-- **stderr 안내(복사 성공 시만):** `password is copied to clipboard`, `totp value is copied to clipboard` (문구 고정, 영문).
+- **labels 매칭 (`find_get_matches`):** **`-l` 없음** + KEY → 해당 키 1건; **`-l` 없음** + KEY+username → username 일치. **`-l` 있음** + KEY+username → labels **집합 정확히 일치**; **`-l`만**(또는 KEY+`-l`, username 생략) → vault labels가 **`-l` 값 전부 포함**(부분 집합). **0건** → `no matched data`.
+- **stdout:** **1건** → `format_get_output` (정렬된 `Timestamp:` / `Key:` / …). **2건 이상** → 엔트리당 한 줄, 상위 필드는 공백 구분 (`timestamp key username [otp] [labels]`). **labels** 끼리는 **콤마만** (`tp00,admin,test`; 콤마 뒤 공백 없음). username 은 CLI 값 또는 vault entry.
+- **클립보드:** **1건**일 때만. `password` 필드는 **표준 Base64(UTF-8)** 로 가정 → 디코드 평문 복사. **`-t`** 이면 **TOTP만** 복사(password 클립보드 생략). **다중 매칭** 시 클립보드·stderr 안내 없음.
+- **stderr 안내(복사 성공 시만):** `password is copied to clipboard` 또는 `totp value is copied to clipboard` (`-t` 시 TOTP만 복사).
 - 파이프/스크립트는 **stdout만** 파싱하는 전제가 맞다.
 
 ### `read` / `random`

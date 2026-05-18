@@ -34,26 +34,46 @@
 
 ### `cotp put` — QR → 시드 출력 + vault 갱신
 
+vault 항목의 **`labels`** 에는 항상 **키(cluster)·username** 이 들어가고, PNG 파일명이 `QR-<key>-<user>-<label>…` 형식이면 그 뒤 라벨도 합칩니다. **같은 key·username·labels** 로 이미 vault에 항목이 **정확히 하나** 있을 때만 업데이트합니다(일치 항목이 없거나 둘 이상이면 덮어쓰지 않음). 그때 stderr에 **요청한 identity**와 **같은 key / username / labels 겹침** 등으로 관련된 기존 항목을 나열합니다.
+
 ```bash
 cotp put
 cotp put -f QR-tp00-alice-admin.png
-cotp put -f /path/to/qr.png -p 'your-password'
+cotp put tp00 alice -f /path/to/qr.png      # QR PNG에서 시드 읽어 vault 갱신
+cotp put tp00 admin -l test                 # -f 없음: PNG 미사용, 기존 항목 메타(labels/password)만 갱신
+cotp put tp00 admin -l test -f qr.png
+cotp tp00 admin -l test                     # put 생략 (-l / -f / -p 중 하나 있으면 put)
 ```
 
 ### `cotp get` — vault에서 TOTP + 비밀번호 클립보드
 
-첫 토큰이 `put` / `get` / `read` / `random` 이 아니고 `-` 로 시작하지 않으면 **`get` 이 생략된 것**으로 봅니다. 예: `cotp tp00 alice` 는 `cotp get tp00 alice` 와 같습니다. (`cotp`, `cotp --help` 는 그대로입니다.)
+첫 토큰이 `put` / `get` / `read` / `random` 이 아니고 `-` 로 시작하지 않으면 **`get` 이 생략된 것**으로 봅니다. 예: `cotp tp00 alice` 는 `cotp get tp00 alice` 와 같습니다. 인자 없이 `cotp` 만 실행하면 **`cotp -h`** 와 같이 도움말을 출력합니다.
 
-- stdout: **`hh:mm:ss`** + 공백 + **username** + 공백 + **6자리 TOTP**.
-- vault 항목의 **`password`** 는 **Base64(UTF-8)** 로 저장된 값으로 가정하고, 디코드한 **평문을 클립보드에 복사**합니다. `-t` 를 주면 **TOTP 코드도** 클립보드에 넣습니다(이때 **마지막에 TOTP**가 남습니다).
+- stdout 예:
+
+```
+Timestamp: hh:mm:ss
+Key      : tp00
+Username : admin
+OTP      : 123456
+Labels   : tp00, admin, test
+```
+
+(`seed` 가 없으면 **OTP:** 줄은 출력하지 않음)
+- vault 항목의 **`password`** 는 **Base64(UTF-8)** 로 저장된 값으로 가정하고, 디코드한 **평문을 클립보드에 복사**합니다. **`-t`** 를 주면 **TOTP만** 클립보드에 넣고 password는 복사하지 않습니다.
 - 복사에 성공하면 **stderr** 에 `password is copied to clipboard` 및/또는 `totp value is copied to clipboard` 가 출력됩니다.
 
 ```bash
 cotp get tp00
 cotp get tp00 alice
-cotp get tp00 alice admin,prod
+cotp tp00 admin
+cotp tp00 -l test
+cotp -l test
+cotp get tp00 alice -l test,prod
 cotp get tp00 alice -t
 ```
+
+**`-l` / `--labels`:** KEY·username 없이 라벨만으로도 조회 가능(vault `labels`에 지정한 값이 **모두 포함**되면 매칭). KEY+username과 함께 `-l`을 쓰면 labels **집합이 정확히 일치**해야 합니다. **`-l` 없이** KEY만 있으면 username 무관·해당 키 아래 1건, KEY+username이면 username만 맞으면 됩니다.
 
 - macOS: `pbcopy` · Linux: `wl-copy` / `xclip` / `xsel` 필요.
 
