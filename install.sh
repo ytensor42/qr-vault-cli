@@ -17,6 +17,7 @@ ROOT="$(cd "$(dirname "$0")" && pwd)"
 INSTALL_BINDIR="${INSTALL_BINDIR:-$HOME/bin}"
 CONFIG_DIR="${HOME}/.config/cotp"
 CONFIG_FILE="${CONFIG_DIR}/config.yaml"
+VENV_DIR="${HOME}/.local/share/cotp/venv"
 MIN_PYTHON=311
 NO_CLEANUP=0
 FORCE_CLEANUP=0
@@ -70,16 +71,28 @@ verify_pyzbar() {
     || die "pyzbar cannot load zbar — install the system zbar library, then re-run"
 }
 
+ensure_venv_python() {
+  local system_py="$1"
+  if [[ ! -x "$VENV_DIR/bin/python" ]]; then
+    note "creating private venv at $VENV_DIR (avoids PEP 668 / externally-managed-environment)..."
+    "$system_py" -m venv "$VENV_DIR"
+  fi
+  echo "$VENV_DIR/bin/python"
+}
+
 pip_install_package() {
-  local py="$1"
-  note "installing cotp and Python dependencies (user site-packages)..."
-  "$py" -m pip install --user --upgrade pip wheel >/dev/null 2>&1 || true
+  local system_py="$1"
+  local venv_py
+  venv_py="$(ensure_venv_python "$system_py")"
+  note "installing cotp into $VENV_DIR (system Python packages are not modified)..."
+  "$venv_py" -m pip install --upgrade pip wheel >/dev/null 2>&1 || true
   if [[ -f "$ROOT/pyproject.toml" ]]; then
-    "$py" -m pip install --user --upgrade "$ROOT"
+    "$venv_py" -m pip install --upgrade "$ROOT"
   else
     note "no pyproject.toml here; installing from GitHub..."
-    "$py" -m pip install --user --upgrade "$GITHUB_PKG"
+    "$venv_py" -m pip install --upgrade "$GITHUB_PKG"
   fi
+  echo "$venv_py"
 }
 
 ensure_config_yaml() {
@@ -170,6 +183,7 @@ cleanup_install_tree() {
   note "done. on this machine you only need:"
   note "  $INSTALL_BINDIR/cotp"
   note "  $CONFIG_FILE"
+  note "  $VENV_DIR"
   note "delete this empty folder if it remains: rmdir $ROOT 2>/dev/null || true"
 }
 
@@ -195,10 +209,10 @@ parse_args() {
 }
 
 main() {
-  local py dest
+  local system_py venv_py dest
   parse_args "$@"
-  py="$(python_bin)"
-  check_python_version "$py"
+  system_py="$(python_bin)"
+  check_python_version "$system_py"
 
   note "step 1 — prerequisites (run these first if missing):"
   note "  macOS:  brew install zbar"
@@ -206,16 +220,16 @@ main() {
   note "  Linux:  sudo apt install libzbar0"
 
   check_zbar_system
-  pip_install_package "$py"
-  "$py" -c "import cotp_cli" || die "cotp_cli import failed after pip install"
-  verify_pyzbar "$py"
+  venv_py="$(pip_install_package "$system_py")"
+  "$venv_py" -c "import cotp_cli" || die "cotp_cli import failed after pip install"
+  verify_pyzbar "$venv_py"
 
   ensure_config_yaml
   ensure_bindir "$INSTALL_BINDIR"
   dest="$INSTALL_BINDIR/cotp"
-  write_cotp_wrapper "$py" "$dest"
+  write_cotp_wrapper "$venv_py" "$dest"
 
-  note "installed: $dest"
+  note "installed: $dest (venv: $VENV_DIR)"
   if "$dest" --help >/dev/null 2>&1; then
     note "smoke test: ok"
   fi

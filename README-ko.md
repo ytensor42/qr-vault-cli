@@ -108,10 +108,12 @@ Python이 3.11 미만이면: `brew install python@3.12` 후 `python3`가 그 버
 
 동작 요약:
 
-1. Python 의존성을 **user site-packages**에 설치 (프로젝트 `.venv` 없음).
-2. **`~/.config/cotp/config.yaml`** 이 없으면 생성 (기본 `vault_path`, `qr_image_dir`).
-3. **`~/bin/cotp`** 설치 (`COTP_CONFIG`를 위 파일로 지정).
-4. 설치 폴더 안의 파일(**`install.sh` 포함**)을 **삭제** — Mac에는 `~/bin/cotp`와 설정 파일만 남김.
+1. **`~/.local/share/cotp/venv`** 에 전용 venv를 만들고 cotp 설치 (Homebrew Python에 `pip install --user` 하지 않음 → **externally-managed-environment** 회피).
+2. **`~/.config/cotp/config.yaml`** 이 없으면 생성.
+3. **`~/bin/cotp`** 래퍼 설치 (venv + `COTP_CONFIG`).
+4. 설치 폴더 파일(**`install.sh` 포함**) **삭제** — 남는 것: `~/bin/cotp`, 설정, venv.
+
+**대안:** `pipx install cotp-cli` (격리 설치; `brew install pipx` 필요).
 
 **git clone** 안에서는 기본적으로 삭제하지 않습니다. 지우려면 `./install.sh --cleanup`. `install.sh`만 있는 폴더에서는 설치 후 스크립트까지 삭제됩니다.
 

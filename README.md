@@ -104,10 +104,12 @@ Clone this repository, then from the directory that contains `install.sh`:
 
 The script will:
 
-1. Install Python dependencies into your **user** site-packages (not a project `.venv`).
+1. Create a **private venv** at **`~/.local/share/cotp/venv`** and install cotp there (does **not** use `pip install --user` on Homebrew Python, so no **externally-managed-environment** error).
 2. Create **`~/.config/cotp/config.yaml`** if missing (default `vault_path` and `qr_image_dir`).
-3. Install **`~/bin/cotp`** (wrapper that sets `COTP_CONFIG` to that file).
-4. **Delete** everything in the install folder, including **`install.sh`** — only `~/bin/cotp` and the config remain on the machine.
+3. Install **`~/bin/cotp`** (wrapper → venv Python + `COTP_CONFIG`).
+4. **Delete** everything in the install folder, including **`install.sh`** — on the machine you keep `~/bin/cotp`, config, and the venv.
+
+**Alternative:** `pipx install cotp-cli` (also isolated; needs `brew install pipx` first).
 
 In a **git clone**, cleanup is skipped automatically (use `./install.sh --no-cleanup` or rely on that default). To wipe the clone after install: `./install.sh --cleanup`. For a folder with only `install.sh`, cleanup runs and deletes that script when finished.
 
