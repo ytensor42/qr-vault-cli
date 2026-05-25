@@ -146,8 +146,14 @@ def test_run_query_clipboard_totp_only_with_t(
     cap = capsys.readouterr()
     out = cap.out.strip()
     assert out == format_get_output_line(
-        "tp", "u", {"username": "u", "labels": ["tp", "u"]}, timestamp="01:02:03", otp_code="999111"
+        "tp",
+        "u",
+        {"username": "u", "labels": ["tp", "u"]},
+        timestamp="01:02:03",
+        otp_code="999111",
+        clipboard="totp",
     )
+    assert cap.err == ""
 
 
 def test_run_query_wide_output_multiline(
@@ -216,7 +222,15 @@ def test_run_query_clipboard_password_notice_only_without_t(
     run_query("tp", "u", None, totp_to_clipboard=False)
 
     cap = capsys.readouterr()
-    assert cap.err.strip() == "password is copied to clipboard"
+    assert cap.err == ""
+    assert cap.out.strip() == format_get_output_line(
+        "tp",
+        "u",
+        {"username": "u", "labels": ["tp", "u"]},
+        timestamp="01:02:03",
+        otp_code="999111",
+        clipboard="password",
+    )
 
 
 def test_run_query_clipboard_totp_notice_only_when_no_password(
@@ -248,7 +262,15 @@ def test_run_query_clipboard_totp_notice_only_when_no_password(
     run_query("tp", "u", None, totp_to_clipboard=True)
 
     cap = capsys.readouterr()
-    assert cap.err.strip() == "totp value is copied to clipboard"
+    assert cap.err == ""
+    assert cap.out.strip() == format_get_output_line(
+        "tp",
+        "u",
+        {"username": "u", "labels": ["tp", "u"]},
+        timestamp="01:02:03",
+        otp_code="999111",
+        clipboard="totp",
+    )
 
 
 def test_run_query_multiple_matches_space_delimited_lines(

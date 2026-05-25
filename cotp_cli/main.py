@@ -649,6 +649,23 @@ def format_labels_csv_for_line(entry: dict) -> str:
     return ",".join(entry_labels_list(entry))
 
 
+def clipboard_marker_for_get_line(
+    entry: dict,
+    otp_code: str | None,
+    *,
+    totp_to_clipboard: bool,
+) -> str | None:
+    """``password`` or ``totp`` when that value is copied to the clipboard; else ``None``."""
+    if totp_to_clipboard and otp_code is not None:
+        return "totp"
+    if not totp_to_clipboard:
+        raw_pw = entry.get("password", "")
+        pw_field = raw_pw if isinstance(raw_pw, str) else ""
+        if decode_vault_password_for_clipboard(pw_field) is not None:
+            return "password"
+    return None
+
+
 def format_get_output_line(
     vault_key: str,
     username: str,
@@ -656,12 +673,22 @@ def format_get_output_line(
     *,
     timestamp: str | None = None,
     otp_code: str | None = None,
+    clipboard: str | None = None,
 ) -> str:
-    """One line: ``HH:MM:SS key/username [otp] [labels]`` (labels comma-separated only)."""
+    """One line: ``HH:MM:SS key/username/… [otp] [labels]`` (clipboard marker in the line)."""
     ts = timestamp if timestamp is not None else datetime.now().strftime("%H:%M:%S")
-    parts = [ts, f"{vault_key}/{username}"]
+    if clipboard == "password":
+        identity = f"{vault_key}/{username}/[**pwd**]"
+    elif clipboard == "totp":
+        identity = f"{vault_key}/{username}/pwd"
+    else:
+        identity = f"{vault_key}/{username}"
+    parts = [ts, identity]
     if otp_code is not None:
-        parts.append(otp_code)
+        if clipboard == "totp":
+            parts.append(f"[**{otp_code}**]")
+        else:
+            parts.append(otp_code)
     labels_csv = format_labels_csv_for_line(entry)
     if labels_csv:
         parts.append(labels_csv)
@@ -821,37 +848,68 @@ def run_query(
     clock, otp_code = _otp_for_get_entry(entry, datetime.now().strftime("%H:%M:%S"))
     if wide_output:
         print(format_get_output(match_key, show_user, entry, timestamp=clock, otp_code=otp_code))
-    else:
-        print(
-            format_get_output_line(
-                match_key, show_user, entry, timestamp=clock, otp_code=otp_code
-            )
-        )
+        if not totp_to_clipboard:
+            raw_pw = entry.get("password", "")
+            pw_field = raw_pw if isinstance(raw_pw, str) else ""
+            decoded_pw = decode_vault_password_for_clipboard(pw_field)
+            if pw_field.strip() and decoded_pw is None:
+                print(
+                    "warning: password is not valid standard Base64 (UTF-8); skipping password clipboard",
+                    file=sys.stderr,
+                )
+            if decoded_pw is not None:
+                try:
+                    copy_text_to_clipboard(decoded_pw)
+                except OSError as e:
+                    print(f"warning: could not copy password to clipboard: {e}", file=sys.stderr)
+                else:
+                    print("password is copied to clipboard", file=sys.stderr)
+        if totp_to_clipboard and otp_code is not None:
+            try:
+                copy_text_to_clipboard(otp_code)
+            except OSError as e:
+                print(f"warning: could not copy TOTP to clipboard: {e}", file=sys.stderr)
+            else:
+                print("totp value is copied to clipboard", file=sys.stderr)
+        return
 
-    if not totp_to_clipboard:
+    line_clipboard = clipboard_marker_for_get_line(
+        entry, otp_code, totp_to_clipboard=totp_to_clipboard
+    )
+    print(
+        format_get_output_line(
+            match_key,
+            show_user,
+            entry,
+            timestamp=clock,
+            otp_code=otp_code,
+            clipboard=line_clipboard,
+        )
+    )
+
+    if line_clipboard == "password":
         raw_pw = entry.get("password", "")
         pw_field = raw_pw if isinstance(raw_pw, str) else ""
         decoded_pw = decode_vault_password_for_clipboard(pw_field)
-        if pw_field.strip() and decoded_pw is None:
+        assert decoded_pw is not None
+        try:
+            copy_text_to_clipboard(decoded_pw)
+        except OSError as e:
+            print(f"warning: could not copy password to clipboard: {e}", file=sys.stderr)
+    elif not totp_to_clipboard:
+        raw_pw = entry.get("password", "")
+        pw_field = raw_pw if isinstance(raw_pw, str) else ""
+        if pw_field.strip() and decode_vault_password_for_clipboard(pw_field) is None:
             print(
                 "warning: password is not valid standard Base64 (UTF-8); skipping password clipboard",
                 file=sys.stderr,
             )
-        if decoded_pw is not None:
-            try:
-                copy_text_to_clipboard(decoded_pw)
-            except OSError as e:
-                print(f"warning: could not copy password to clipboard: {e}", file=sys.stderr)
-            else:
-                print("password is copied to clipboard", file=sys.stderr)
 
-    if totp_to_clipboard and otp_code is not None:
+    if line_clipboard == "totp" and otp_code is not None:
         try:
             copy_text_to_clipboard(otp_code)
         except OSError as e:
             print(f"warning: could not copy TOTP to clipboard: {e}", file=sys.stderr)
-        else:
-            print("totp value is copied to clipboard", file=sys.stderr)
 
 
 def run_put_metadata_only(

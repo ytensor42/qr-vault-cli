@@ -108,9 +108,8 @@
 ### `get`
 
 - **labels 매칭 (`find_get_matches`):** **`-l` 없음** + KEY → 해당 키 1건; **`-l` 없음** + KEY+username → username 일치. **`-l` 있음** + KEY+username → labels **집합 정확히 일치**; **`-l`만**(또는 KEY+`-l`, username 생략) → vault labels가 **`-l` 값 전부 포함**(부분 집합). **0건** → `no matched data`.
-- **stdout:** 기본 **한 줄** `HH:MM:SS key/username [otp] [labels]` (`format_get_output_line`). **`-w`** → **1건**일 때만 여러 줄 정렬 (`format_get_output`). **2건 이상** → 엔트리당 한 줄(동일 형식). **labels** 끼리는 **콤마만**. username 은 CLI 값 또는 vault entry.
-- **클립보드:** **1건**일 때만. `password` 필드는 **표준 Base64(UTF-8)** 로 가정 → 디코드 평문 복사. **`-t`** 이면 **TOTP만** 복사(password 클립보드 생략). **다중 매칭** 시 클립보드·stderr 안내 없음.
-- **stderr 안내(복사 성공 시만):** `password is copied to clipboard` 또는 `totp value is copied to clipboard` (`-t` 시 TOTP만 복사).
+- **stdout:** 기본 **한 줄** `HH:MM:SS key/username [otp] [labels]` (`format_get_output_line`). **1건** + 클립보드 사용 시 줄에 표시: password → `key/user/[**pwd**]`, **`-t`** → `key/user/pwd [**otp**]`. **`-w`** → **1건**일 때만 여러 줄 정렬 (`format_get_output`); 복사 성공 안내는 **stderr** (`password is copied…` / `totp value is copied…`). **2건 이상** → 엔트리당 한 줄(마커 없음). **labels** 끼리는 **콤마만**. username 은 CLI 값 또는 vault entry.
+- **클립보드:** **1건**일 때만. `password` 필드는 **표준 Base64(UTF-8)** 로 가정 → 디코드 평문 복사. **`-t`** 이면 **TOTP만** 복사(password 클립보드 생략). **다중 매칭** 시 클립보드·마커 없음.
 - 파이프/스크립트는 **stdout만** 파싱하는 전제가 맞다.
 
 ### `read` / `random`

@@ -52,10 +52,9 @@ cotp tp00 admin -p                          # implicit put (-f or -p; else get)
 
 If the first token is not `put`, `get`, `read`, or `random`, and it does not start with `-`, it is treated as **`get` with that argument list**. For example, `cotp tp00 alice` is the same as `cotp get tp00 alice`. With **no arguments**, `cotp` prints help (same as `cotp -h`).
 
-- stdout default (one line): `HH:MM:SS key/username [otp] [labels]` (labels comma-separated; OTP omitted if no seed).
-- **`-w`**: multi-line aligned output (`Timestamp:`, `Key:`, `Username:`, …).
+- stdout default (one line): `HH:MM:SS key/username [otp] [labels]` (labels comma-separated; OTP omitted if no seed). When the clipboard is used (single match only), the line marks what was copied: `key/user/[**pwd**]` for password, or `key/user/pwd [**otp**]` with **`-t`**.
+- **`-w`**: multi-line aligned output (`Timestamp:`, `Key:`, `Username:`, …); clipboard success messages go to **stderr** as before.
 - The vault entry **`password`** is assumed to be **Base64 (UTF-8)**; the decoded **plaintext is copied to the clipboard**. With **`-t`**, only the **TOTP code** is copied (password is not copied).
-- On success, **stderr** prints `password is copied to clipboard` and/or `totp value is copied to clipboard` so you know what was copied.
 
 ```bash
 cotp get tp00
