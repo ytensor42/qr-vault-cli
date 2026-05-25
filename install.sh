@@ -35,7 +35,7 @@ die() {
 }
 
 note() {
-  echo "cotp install: $*"
+  echo "cotp install: $*" >&2
 }
 
 need_cmd() {
@@ -272,7 +272,9 @@ main() {
 
   check_zbar_system
   venv_py="$(pip_install_package "$system_py")"
-  [[ "$venv_py" == "$VENV_PYTHON" ]] || die "unexpected venv python path"
+  if [[ ! -x "$venv_py" ]]; then
+    die "venv python missing: $venv_py"
+  fi
   "$venv_py" -c "import cotp_cli" || die "cotp_cli import failed after pip install"
   verify_pyzbar "$venv_py"
 
