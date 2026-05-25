@@ -12,6 +12,7 @@
 
 ## 요구사항
 
+- **Python 3.11 이상**
 - **zbar** (pyzbar): macOS `brew install zbar` · Debian/Ubuntu `sudo apt install libzbar0`
 
 ## 설정 파일
@@ -94,7 +95,89 @@ cotp read -f ~/Downloads/Screenshots/cap.png
 cotp random
 ```
 
-## 설치·개발
+## 다른 Mac에서 설치하기
+
+새 Mac·두 번째 Mac에서 **같은 CLI와 vault**를 쓰려면 아래 순서를 따릅니다.
+
+### 1. 시스템 준비
+
+```bash
+brew install zbar
+python3 --version   # 3.11 이상이어야 함
+```
+
+Python이 없거나 낮으면 예: `brew install python@3.12`.
+
+### 2. `cotp` 설치 (하나 선택)
+
+**권장 — PyPI (저장소 clone 불필요):**
+
+```bash
+pipx install cotp-cli
+# 또는: python3 -m pip install --user cotp-cli
+cotp --help
+```
+
+`cotp`를 찾지 못하면 `~/.local/bin`(pip `--user`) 또는 pipx bin 경로를 `PATH`에 넣습니다.
+
+**GitHub 최신 `main`:**
+
+```bash
+pipx install "cotp-cli @ git+https://github.com/ytensor42/qr-vault-cli.git"
+```
+
+**로컬 저장소** (미공개 변경·본인 fork 포함):
+
+```bash
+git clone https://github.com/ytensor42/qr-vault-cli.git
+cd qr-vault-cli
+python3 -m pip install --user -e .
+# 또는 저장소 안 venv:
+# python3 -m venv .venv && source .venv/bin/activate && pip install -e .
+```
+
+### 3. 설정 (선택)
+
+```bash
+mkdir -p ~/.config/cotp
+cp config.example.yaml ~/.config/cotp/config.yaml
+```
+
+`vault_path`, `qr_image_dir`를 쓰는 경로에 맞게 수정합니다. 다른 경로를 쓰려면:
+
+```bash
+export COTP_CONFIG=~/.config/cotp/config.yaml
+```
+
+| 설정 없을 때 기본값 | |
+|---------------------|--|
+| **`get`** 이 읽는 vault | `~/Downloads/Screenshots/qr-vault.yaml` |
+| **`-f` 없는** `put` / `read` 의 QR 폴더 | `~/Downloads/Screenshots` |
+
+**`vault_path`** 를 쓰면 **`put`** 은 PNG 옆이 아니라 **항상 그 파일**에 병합합니다.
+
+### 4. vault 파일 옮기기
+
+프로그램 설치만으로는 **시드·비밀번호가 따라오지 않습니다**. 기존 Mac의 **`qr-vault.yaml`**(또는 config의 `vault_path`)을 새 Mac으로 복사합니다 (AirDrop, `scp`, 암호화 백업 등).
+
+```bash
+chmod 600 ~/path/to/qr-vault.yaml
+```
+
+비밀번호 관리자보내기와 같이 취급하세요 (시드, Base64 `password` 포함).
+
+### 5. 동작 확인
+
+```bash
+cotp --help
+cotp get tp00 admin          # 또는: cotp -l your-label
+```
+
+stdout에 TOTP가 보이고, 항목에 유효한 Base64 **`password`** 가 있으면 stderr에 `password is copied to clipboard`가 나옵니다 (**`-t`** 는 TOTP만 클립보드).
+
+---
+
+## 개발 (저장소 기여)
 
 ```bash
 python3 -m venv .venv
@@ -102,12 +185,6 @@ source .venv/bin/activate
 pip install -e ".[dev]"
 pytest
 ruff check .
-```
-
-Git에서 설치:
-
-```bash
-pip install "cotp-cli @ git+https://github.com/ytensor42/qr-vault-cli.git"
 ```
 
 ## 커뮤니티

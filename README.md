@@ -12,6 +12,7 @@
 
 ## Requirements
 
+- **Python 3.11+**
 - **zbar** (for pyzbar): macOS `brew install zbar` · Debian/Ubuntu `sudo apt install libzbar0`
 
 ## Configuration
@@ -41,8 +42,10 @@ cotp put
 cotp put -f QR-tp00-alice-admin.png
 cotp put tp00 alice -f /path/to/qr.png      # read seed from QR PNG
 cotp put tp00 admin -l test                 # no -f: metadata-only (labels/password; keep seed)
+cotp put tp00 admin -p                      # -p only: prompt twice, store Base64 (Ctrl+C aborts)
+cotp put tp00 admin -p 'Base64-string'      # store password field as given (for get clipboard)
 cotp put tp00 admin -l test -f qr.png
-cotp tp00 admin -l test                     # implicit put (-l / -f / -p present; else get)
+cotp tp00 admin -p                          # implicit put (-f or -p; else get)
 ```
 
 ### `cotp get` — TOTP from vault + password to clipboard
@@ -78,7 +81,89 @@ One line: **`<plain> <base64>`** — 12-character plain text, then standard Base
 cotp random
 ```
 
-## Install and development
+## Install on another Mac
+
+Use this when you move to a **new Mac** or a second machine and want the same `cotp` CLI and vault.
+
+### 1. System dependencies
+
+```bash
+brew install zbar
+python3 --version   # must be 3.11 or newer
+```
+
+Install Python 3.11+ if needed (e.g. `brew install python@3.12`).
+
+### 2. Install `cotp` (pick one)
+
+**Recommended — PyPI (no clone):**
+
+```bash
+pipx install cotp-cli
+# or: python3 -m pip install --user cotp-cli
+cotp --help
+```
+
+If `cotp` is not found, add `~/.local/bin` (pip `--user`) or ensure pipx’s bin directory is on your `PATH`.
+
+**From GitHub (latest `main`):**
+
+```bash
+pipx install "cotp-cli @ git+https://github.com/ytensor42/qr-vault-cli.git"
+```
+
+**From a local clone** (your checkout, including unpublished changes):
+
+```bash
+git clone https://github.com/ytensor42/qr-vault-cli.git
+cd qr-vault-cli
+python3 -m pip install --user -e .
+# or use a venv in the repo:
+# python3 -m venv .venv && source .venv/bin/activate && pip install -e .
+```
+
+### 3. Configuration (optional)
+
+```bash
+mkdir -p ~/.config/cotp
+cp config.example.yaml ~/.config/cotp/config.yaml
+```
+
+Edit `vault_path` and `qr_image_dir` if you do not use the defaults. Or point at a custom file:
+
+```bash
+export COTP_CONFIG=~/.config/cotp/config.yaml
+```
+
+| Default (no config) | |
+|---------------------|--|
+| Vault file for **`get`** | `~/Downloads/Screenshots/qr-vault.yaml` |
+| QR folder for **`put`** / **`read`** without `-f` | `~/Downloads/Screenshots` |
+
+When **`vault_path`** is set, **`put`** always merges into that file (not beside the PNG).
+
+### 4. Copy your vault
+
+`cotp` does not sync vault data for you. Copy **`qr-vault.yaml`** (or the path in `vault_path`) from the old Mac to the new one, e.g. AirDrop, `scp`, or encrypted backup.
+
+```bash
+chmod 600 ~/path/to/qr-vault.yaml
+```
+
+Treat this file like a password manager export (seeds and Base64-encoded passwords).
+
+### 5. Verify
+
+```bash
+cotp --help
+cotp get tp00 admin          # or: cotp -l your-label
+```
+
+You should see TOTP on stdout; if the entry has a valid Base64 **`password`**, stderr reports `password is copied to clipboard` (use **`-t`** for TOTP-only clipboard).
+
+---
+
+## Development
 
 From the repository root:
 
@@ -88,12 +173,6 @@ source .venv/bin/activate
 pip install -e ".[dev]"
 pytest
 ruff check .
-```
-
-Install from Git:
-
-```bash
-pip install "cotp-cli @ git+https://github.com/ytensor42/qr-vault-cli.git"
 ```
 
 ## Community
