@@ -7,6 +7,7 @@
 #   ./install.sh --cleanup    # remove install dir even in a git clone
 #
 #   COTP_INSTALL_LOCAL=1 ./install.sh   # build from local pyproject (dev)
+#   ./install.sh --bin-only             # only ~/bin/cotp (venv already at ~/.cotp/venv)
 #
 # Prerequisites (install first):
 #   macOS:  brew install zbar
@@ -15,7 +16,10 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
-INSTALL_BINDIR="${INSTALL_BINDIR:-$HOME/bin}"
+if [[ -z "${HOME:-}" ]]; then
+  die "HOME is not set; cannot install to ~/bin"
+fi
+INSTALL_BINDIR="${INSTALL_BINDIR:-${HOME}/bin}"
 CONFIG_DIR="${HOME}/.config/cotp"
 CONFIG_FILE="${CONFIG_DIR}/config.yaml"
 VENV_DIR="${HOME}/.cotp/venv"
@@ -23,6 +27,7 @@ VENV_PYTHON="${VENV_DIR}/bin/python"
 MIN_PYTHON=311
 NO_CLEANUP=0
 FORCE_CLEANUP=0
+BIN_ONLY=0
 GITHUB_PKG='cotp-cli @ git+https://github.com/ytensor42/qr-vault-cli.git'
 OLD_VENV_DIRS=(
   "${HOME}/.local/share/cotp/venv"
@@ -238,6 +243,23 @@ cleanup_install_tree() {
   note "delete this empty folder if it remains: rmdir $ROOT 2>/dev/null || true"
 }
 
+install_wrapper_only() {
+  local dest="$INSTALL_BINDIR/cotp"
+  if [[ ! -x "$VENV_PYTHON" ]]; then
+    die "venv missing at $VENV_DIR — run full ./install.sh first"
+  fi
+  ensure_config_yaml
+  ensure_bindir "$INSTALL_BINDIR"
+  write_cotp_wrapper "$dest"
+  [[ -x "$dest" ]] || die "cotp was not created at $dest"
+  "$dest" --help >/dev/null 2>&1 || die "cotp at $dest failed smoke test (--help)"
+  note "install complete (wrapper only):"
+  note "  cotp command:  $dest"
+  note "  (venv also has: $VENV_DIR/bin/cotp — use ~/bin/cotp for default config)"
+  ls -la "$dest" >&2
+  path_hint "$INSTALL_BINDIR"
+}
+
 parse_args() {
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -247,8 +269,11 @@ parse_args() {
       --cleanup)
         FORCE_CLEANUP=1
         ;;
+      --bin-only)
+        BIN_ONLY=1
+        ;;
       -h | --help)
-        sed -n '2,16p' "$0"
+        sed -n '2,18p' "$0"
         exit 0
         ;;
       *)
@@ -262,6 +287,10 @@ parse_args() {
 main() {
   local system_py venv_py dest
   parse_args "$@"
+  if [[ "$BIN_ONLY" -eq 1 ]]; then
+    install_wrapper_only
+    return 0
+  fi
   system_py="$(python_bin)"
   check_python_version "$system_py"
 
@@ -279,14 +308,19 @@ main() {
   verify_pyzbar "$venv_py"
 
   ensure_config_yaml
+  note "HOME=$HOME"
+  note "INSTALL_BINDIR=$INSTALL_BINDIR"
   ensure_bindir "$INSTALL_BINDIR"
   dest="$INSTALL_BINDIR/cotp"
   write_cotp_wrapper "$dest"
+  [[ -x "$dest" ]] || die "cotp was not created at $dest"
+  "$dest" --help >/dev/null 2>&1 || die "cotp at $dest failed smoke test (--help)"
 
-  note "installed: $dest (venv: $VENV_DIR)"
-  if "$dest" --help >/dev/null 2>&1; then
-    note "smoke test: ok"
-  fi
+  note "install complete:"
+  note "  cotp command:  $dest"
+  note "  venv:          $VENV_DIR"
+  note "  config:        $CONFIG_FILE"
+  ls -la "$dest" >&2
   path_hint "$INSTALL_BINDIR"
   note "copy qr-vault.yaml to the vault_path in $CONFIG_FILE if needed"
   cleanup_install_tree

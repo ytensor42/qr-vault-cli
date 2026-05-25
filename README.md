@@ -155,8 +155,18 @@ chmod 600 ~/.config/cotp/qr-vault.yaml
 ### 6. Verify
 
 ```bash
+ls -la ~/bin/cotp ~/.cotp/venv/bin/python
 cotp --help
 cotp get tp00 admin          # or: cotp -l your-label
+```
+
+If **`~/bin/cotp` is missing**, the install did not finish. You should see `cotp install: install complete:` and `cotp command: /Users/you/bin/cotp`. Retry:
+
+```bash
+rm -rf ~/.cotp ~/.local/share/cotp
+git pull
+./install.sh --no-cleanup
+find "$HOME" -name cotp -type f 2>/dev/null   # in case INSTALL_BINDIR was overridden
 ```
 
 ---

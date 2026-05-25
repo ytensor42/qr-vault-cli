@@ -135,9 +135,28 @@ chmod 600 ~/.config/cotp/qr-vault.yaml
 ### 5. 확인
 
 ```bash
+ls -la ~/bin/cotp ~/.cotp/venv/bin/python
 cotp --help
 cotp get tp00 admin
 ```
+
+**`~/.cotp/venv/bin/cotp`만 있고 `~/bin/cotp`가 없을 때** (예: 예전 `unexpected venv python path` 오류 후):
+
+```bash
+mkdir -p ~/bin
+./install.sh --bin-only
+# 또는: export PATH="$HOME/.cotp/venv/bin:$PATH"  (config는 COTP_CONFIG=~/.config/cotp/config.yaml)
+```
+
+**`~/bin/cotp`가 없을 때:** 설치가 중간에 실패한 것입니다. 터미널에 `cotp install: install complete:` 와 `cotp command: /Users/…/bin/cotp` 가 보였는지 확인하세요. `echo $HOME` 이 비어 있으면 안 됩니다. 재시도:
+
+```bash
+rm -rf ~/.cotp ~/.local/share/cotp
+git pull
+./install.sh --no-cleanup
+```
+
+다른 경로에 깔렸을 수 있으면: `find "$HOME" -name cotp -type f 2>/dev/null`
 
 ---
 
