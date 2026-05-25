@@ -52,17 +52,8 @@ cotp tp00 admin -p                          # put 생략 (-f / -p)
 
 첫 토큰이 `put` / `get` / `read` / `random` 이 아니고 `-` 로 시작하지 않으면 **`get` 이 생략된 것**으로 봅니다. 예: `cotp tp00 alice` 는 `cotp get tp00 alice` 와 같습니다. 인자 없이 `cotp` 만 실행하면 **`cotp -h`** 와 같이 도움말을 출력합니다.
 
-- stdout 예:
-
-```
-Timestamp: hh:mm:ss
-Key      : tp00
-Username : admin
-OTP      : 123456
-Labels   : tp00, admin, test
-```
-
-(`seed` 가 없으면 **OTP:** 줄은 출력하지 않음)
+- stdout 기본 (한 줄): `17:49:08 tp00/admin 123456 tp00,admin,test` (`seed` 없으면 OTP 생략)
+- **`-w`**: 여러 줄 정렬 (`Timestamp:` / `Key:` / `Username:` / …)
 - vault 항목의 **`password`** 는 **Base64(UTF-8)** 로 저장된 값으로 가정하고, 디코드한 **평문을 클립보드에 복사**합니다. **`-t`** 를 주면 **TOTP만** 클립보드에 넣고 password는 복사하지 않습니다.
 - 복사에 성공하면 **stderr** 에 `password is copied to clipboard` 및/또는 `totp value is copied to clipboard` 가 출력됩니다.
 
@@ -74,6 +65,7 @@ cotp tp00 -l test
 cotp -l test
 cotp get tp00 alice -l test,prod
 cotp get tp00 alice -t
+cotp get tp00 admin -w
 ```
 
 **`-l` / `--labels`:** KEY·username 없이 라벨만으로도 조회 가능(vault `labels`에 지정한 값이 **모두 포함**되면 매칭). KEY+username과 함께 `-l`을 쓰면 labels **집합이 정확히 일치**해야 합니다. **`-l` 없이** KEY만 있으면 username 무관·해당 키 아래 1건, KEY+username이면 username만 맞으면 됩니다.
@@ -97,64 +89,48 @@ cotp random
 
 ## 다른 Mac에서 설치하기
 
-새 Mac·두 번째 Mac에서 **같은 CLI와 vault**를 쓰려면 아래 순서를 따릅니다.
-
-### 1. 시스템 준비
+### 1. 사전 준비 (Mac당 한 번)
 
 ```bash
 brew install zbar
-python3 --version   # 3.11 이상이어야 함
+python3 --version   # 3.11 이상
 ```
 
-Python이 없거나 낮으면 예: `brew install python@3.12`.
+Python이 3.11 미만이면: `brew install python@3.12` 후 `python3`가 그 버전을 가리키게 맞춥니다.
 
-### 2. `cotp` 설치 (하나 선택)
+### 2. `~/bin`에 설치 (명령 하나)
 
-**권장 — PyPI (저장소 clone 불필요):**
+`install.sh`가 있는 디렉터리에서:
 
 ```bash
-pipx install cotp-cli
-# 또는: python3 -m pip install --user cotp-cli
-cotp --help
+./install.sh
 ```
 
-`cotp`를 찾지 못하면 `~/.local/bin`(pip `--user`) 또는 pipx bin 경로를 `PATH`에 넣습니다.
+동작 요약:
 
-**GitHub 최신 `main`:**
+1. Python 의존성을 **user site-packages**에 설치 (프로젝트 `.venv` 없음).
+2. **`~/.config/cotp/config.yaml`** 이 없으면 생성 (기본 `vault_path`, `qr_image_dir`).
+3. **`~/bin/cotp`** 설치 (`COTP_CONFIG`를 위 파일로 지정).
+4. 설치 폴더 안의 파일(**`install.sh` 포함**)을 **삭제** — Mac에는 `~/bin/cotp`와 설정 파일만 남김.
 
-```bash
-pipx install "cotp-cli @ git+https://github.com/ytensor42/qr-vault-cli.git"
-```
+**git clone** 안에서는 기본적으로 삭제하지 않습니다. 지우려면 `./install.sh --cleanup`. `install.sh`만 있는 폴더에서는 설치 후 스크립트까지 삭제됩니다.
 
-**로컬 저장소** (미공개 변경·본인 fork 포함):
+다른 경로: `INSTALL_BINDIR=/usr/local/bin ./install.sh`
 
-```bash
-git clone https://github.com/ytensor42/qr-vault-cli.git
-cd qr-vault-cli
-python3 -m pip install --user -e .
-# 또는 저장소 안 venv:
-# python3 -m venv .venv && source .venv/bin/activate && pip install -e .
-```
+`~/bin`을 `PATH`에 넣은 뒤 `cotp --help`.
 
-### 3. 설정 (선택)
+### 3. 설정
 
-```bash
-mkdir -p ~/.config/cotp
-cp config.example.yaml ~/.config/cotp/config.yaml
-```
+`install.sh`가 **`~/.config/cotp/config.yaml`** 을 만들며, 이것이 기본 설정입니다 (`cotp`가 `COTP_CONFIG`로 이 경로를 사용).
 
-`vault_path`, `qr_image_dir`를 쓰는 경로에 맞게 수정합니다. 다른 경로를 쓰려면:
+경로를 바꾸려면 해당 파일을 편집합니다. 다른 파일을 쓰려면 `export COTP_CONFIG=/path/to/config.yaml`.
 
-```bash
-export COTP_CONFIG=~/.config/cotp/config.yaml
-```
+| install.sh가 넣는 기본값 | |
+|--------------------------|--|
+| **`vault_path`** | `~/.config/cotp/qr-vault.yaml` |
+| **`qr_image_dir`** | `~/Downloads/Screenshots` |
 
-| 설정 없을 때 기본값 | |
-|---------------------|--|
-| **`get`** 이 읽는 vault | `~/Downloads/Screenshots/qr-vault.yaml` |
-| **`-f` 없는** `put` / `read` 의 QR 폴더 | `~/Downloads/Screenshots` |
-
-**`vault_path`** 를 쓰면 **`put`** 은 PNG 옆이 아니라 **항상 그 파일**에 병합합니다.
+**`vault_path`** 가 있으면 **`put`** 은 PNG 옆이 아니라 **항상 그 파일**에 병합합니다.
 
 ### 4. vault 파일 옮기기
 

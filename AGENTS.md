@@ -47,8 +47,8 @@
 | **인자 없음** → 도움말 (`cotp` = `cotp -h`) | `argv_for_dispatch` |
 | 암시적 get: 서브커맨드 생략, **`-l` / `-t`로 시작**해도 get | `argv_for_dispatch` |
 | **매칭 0건** → `no matched data` | |
-| **매칭 1건** → stdout **여러 줄 정렬** (`Timestamp:` / `Key:` / …) | `format_get_output`; seed 없으면 OTP 줄 생략 |
-| **매칭 2건 이상** → **엔트리당 한 줄**, 필드는 **공백** 구분; **labels끼리는 콤마만**(공백 없음) | `format_get_output_line` · 예: `22:39:11 tp00 admin 079724 tp00,admin,test` |
+| **매칭 1건** → stdout **한 줄** `HH:MM:SS key/username [otp] [labels]` | `format_get_output_line`; **`-w`** 이면 여러 줄 정렬 (`format_get_output`) |
+| **매칭 2건 이상** → **엔트리당 한 줄** (동일 한 줄 형식) | 예: `22:39:11 tp00/admin 079724 tp00,admin,test` |
 | **클립보드·stderr 복사 안내**는 **1건일 때만**; 다중 매칭 시 stdout만 | |
 
 ### 그 외
@@ -99,7 +99,7 @@
 
 - **`-f` 있음:** `resolve_png_path` — QR PNG에서 시드 추출·stdout 출력·vault merge (`match_identity_labels=True`, key+username+labels 일치 1건).
 - **`-f` 없음:** `run_put_metadata_only` — PNG·폴더 스캔 없음. **KEY+username 필수**. vault는 `default_vault_path()`. **key+username** 으로 1건 찾아 **labels/password** 만 갱신, **seed 유지**. 신규 키면 seed `""` 로 생성(QR 없는 항목).
-- vault 갱신 대상: 설정에 **`vault_path`** 가 있으면 **그 파일**에 merge; 없으면 **`PNG 부모 디렉터리/qr-vault.yaml`** (`vault_path_for_put`).
+- vault 갱신 대상: 설정에 **`vault_path`** 가 있으면 **그 파일**에 merge; 없으면 **`PNG 부모 디렉터리/qr-vault.yaml`** (`vault_path_for_put`). **`get`** 기본 vault: **`~/.config/cotp/qr-vault.yaml`** (config 없을 때).
 - **`labels`**: `labels_for_vault_entry` — **cluster(key)·username** 을 항상 포함, PNG 파일명 `QR-…` 파싱 분 + **`put -l` / `--labels`** (콤마 구분) 추가 라벨(중복 제거).
 - **업데이트 조건** (`merge_qr_vault_yaml`): vault 키 **`<key>`** 아래에서 **username·labels(집합)** 이 모두 일치하는 엔트리가 **정확히 1개**일 때만 seed/password 갱신. 0개면 키가 비어 있을 때만 신규 생성; 키는 있는데 일치 항목 없으면 덮어쓰지 않고 **`VaultUpdateError`** + stderr **hints**(같은 key / username 일치 / labels 겹침 등 관련 엔트리 목록). 2개 이상 exact match도 hints로 전부 표시.
 - **`cotp put <key> <username> [-l …] [-f png]`** — **`-f` 생략** = 메타데이터만(기존 seed 유지). implicit put: **`<key> <username>`** + **`-f` 또는 `-p`**.
@@ -108,7 +108,7 @@
 ### `get`
 
 - **labels 매칭 (`find_get_matches`):** **`-l` 없음** + KEY → 해당 키 1건; **`-l` 없음** + KEY+username → username 일치. **`-l` 있음** + KEY+username → labels **집합 정확히 일치**; **`-l`만**(또는 KEY+`-l`, username 생략) → vault labels가 **`-l` 값 전부 포함**(부분 집합). **0건** → `no matched data`.
-- **stdout:** **1건** → `format_get_output` (정렬된 `Timestamp:` / `Key:` / …). **2건 이상** → 엔트리당 한 줄, 상위 필드는 공백 구분 (`timestamp key username [otp] [labels]`). **labels** 끼리는 **콤마만** (`tp00,admin,test`; 콤마 뒤 공백 없음). username 은 CLI 값 또는 vault entry.
+- **stdout:** 기본 **한 줄** `HH:MM:SS key/username [otp] [labels]` (`format_get_output_line`). **`-w`** → **1건**일 때만 여러 줄 정렬 (`format_get_output`). **2건 이상** → 엔트리당 한 줄(동일 형식). **labels** 끼리는 **콤마만**. username 은 CLI 값 또는 vault entry.
 - **클립보드:** **1건**일 때만. `password` 필드는 **표준 Base64(UTF-8)** 로 가정 → 디코드 평문 복사. **`-t`** 이면 **TOTP만** 복사(password 클립보드 생략). **다중 매칭** 시 클립보드·stderr 안내 없음.
 - **stderr 안내(복사 성공 시만):** `password is copied to clipboard` 또는 `totp value is copied to clipboard` (`-t` 시 TOTP만 복사).
 - 파이프/스크립트는 **stdout만** 파싱하는 전제가 맞다.

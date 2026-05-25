@@ -65,10 +65,7 @@ def test_main_implicit_get_equivalent_to_get_keyword(
     assert out_explicit == out_implicit
     assert err_explicit == err_implicit
     assert copies_explicit == copies_implicit
-    assert "Timestamp: 01:02:03" in out_explicit
-    assert "Key      : tp" in out_explicit
-    assert "Username : u" in out_explicit
-    assert "OTP      : 999111" in out_explicit
+    assert out_explicit.strip() == "01:02:03 tp/u 999111 tp,u"
     assert copies_explicit == ["hunter2"]
     assert "password is copied to clipboard" in err_explicit
     assert "totp value is copied to clipboard" not in err_explicit

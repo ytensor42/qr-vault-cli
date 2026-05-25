@@ -1,9 +1,8 @@
-# Optional cotp configuration.
-# Install as: ~/.config/cotp/config.yaml
-# Or set COTP_CONFIG to the path of this file.
+# cotp configuration (install.sh creates ~/.config/cotp/config.yaml with these defaults).
+# Override: export COTP_CONFIG=/path/to/config.yaml
 #
-# vault_path: where qr-vault.yaml lives (used by get, and by put when set).
-# qr_image_dir: default folder for put/read without -f; base path for relative -f.
+# vault_path: qr-vault.yaml for get; put merges here when set.
+# qr_image_dir: default folder for put/read without -f.
 
-# vault_path: ~/secrets/qr-vault.yaml
-# qr_image_dir: ~/Downloads/Screenshots
+vault_path: ~/.config/cotp/qr-vault.yaml
+qr_image_dir: ~/Downloads/Screenshots

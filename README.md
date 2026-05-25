@@ -52,7 +52,8 @@ cotp tp00 admin -p                          # implicit put (-f or -p; else get)
 
 If the first token is not `put`, `get`, `read`, or `random`, and it does not start with `-`, it is treated as **`get` with that argument list**. For example, `cotp tp00 alice` is the same as `cotp get tp00 alice`. With **no arguments**, `cotp` prints help (same as `cotp -h`).
 
-- stdout (multi-line): `Timestamp:`, `Key:`, `Username:`, `OTP:` (only when a seed exists), `Labels:` (comma-separated).
+- stdout default (one line): `HH:MM:SS key/username [otp] [labels]` (labels comma-separated; OTP omitted if no seed).
+- **`-w`**: multi-line aligned output (`Timestamp:`, `Key:`, `Username:`, …).
 - The vault entry **`password`** is assumed to be **Base64 (UTF-8)**; the decoded **plaintext is copied to the clipboard**. With **`-t`**, only the **TOTP code** is copied (password is not copied).
 - On success, **stderr** prints `password is copied to clipboard` and/or `totp value is copied to clipboard` so you know what was copied.
 
@@ -62,6 +63,7 @@ cotp get tp00 alice
 cotp get tp00 alice -l admin,prod
 cotp tp00 admin -l test
 cotp get tp00 alice -t
+cotp get tp00 admin -w
 ```
 
 - macOS: `pbcopy` · Linux: one of `wl-copy` / `xclip` / `xsel`.
@@ -83,62 +85,50 @@ cotp random
 
 ## Install on another Mac
 
-Use this when you move to a **new Mac** or a second machine and want the same `cotp` CLI and vault.
-
-### 1. System dependencies
+### 1. Prerequisites (run once per machine)
 
 ```bash
 brew install zbar
 python3 --version   # must be 3.11 or newer
 ```
 
-Install Python 3.11+ if needed (e.g. `brew install python@3.12`).
+If Python is older than 3.11: `brew install python@3.12` and ensure `python3` points at it.
 
-### 2. Install `cotp` (pick one)
+### 2. Install `cotp` into `~/bin` (one command)
 
-**Recommended — PyPI (no clone):**
-
-```bash
-pipx install cotp-cli
-# or: python3 -m pip install --user cotp-cli
-cotp --help
-```
-
-If `cotp` is not found, add `~/.local/bin` (pip `--user`) or ensure pipx’s bin directory is on your `PATH`.
-
-**From GitHub (latest `main`):**
+Clone this repository, then from the directory that contains `install.sh`:
 
 ```bash
-pipx install "cotp-cli @ git+https://github.com/ytensor42/qr-vault-cli.git"
+./install.sh
 ```
 
-**From a local clone** (your checkout, including unpublished changes):
+The script will:
+
+1. Install Python dependencies into your **user** site-packages (not a project `.venv`).
+2. Create **`~/.config/cotp/config.yaml`** if missing (default `vault_path` and `qr_image_dir`).
+3. Install **`~/bin/cotp`** (wrapper that sets `COTP_CONFIG` to that file).
+4. **Delete** everything in the install folder, including **`install.sh`** — only `~/bin/cotp` and the config remain on the machine.
+
+In a **git clone**, cleanup is skipped automatically (use `./install.sh --no-cleanup` or rely on that default). To wipe the clone after install: `./install.sh --cleanup`. For a folder with only `install.sh`, cleanup runs and deletes that script when finished.
+
+Install elsewhere:
 
 ```bash
-git clone https://github.com/ytensor42/qr-vault-cli.git
-cd qr-vault-cli
-python3 -m pip install --user -e .
-# or use a venv in the repo:
-# python3 -m venv .venv && source .venv/bin/activate && pip install -e .
+INSTALL_BINDIR=/usr/local/bin ./install.sh
 ```
 
-### 3. Configuration (optional)
+Ensure `~/bin` is on your `PATH`, then `cotp --help`.
 
-```bash
-mkdir -p ~/.config/cotp
-cp config.example.yaml ~/.config/cotp/config.yaml
-```
+### 3. Configuration
 
-Edit `vault_path` and `qr_image_dir` if you do not use the defaults. Or point at a custom file:
+`install.sh` creates **`~/.config/cotp/config.yaml`** when missing; the installed **`cotp`** command sets **`COTP_CONFIG`** to that path by default.
 
-```bash
-export COTP_CONFIG=~/.config/cotp/config.yaml
-```
+Edit that file to change `vault_path` or `qr_image_dir`.
 
-| Default (no config) | |
-|---------------------|--|
-| Vault file for **`get`** | `~/Downloads/Screenshots/qr-vault.yaml` |
-| QR folder for **`put`** / **`read`** without `-f` | `~/Downloads/Screenshots` |
+| Defaults written by `install.sh` | |
+|----------------------------------|--|
+| **`vault_path`** | `~/.config/cotp/qr-vault.yaml` |
+| **`qr_image_dir`** | `~/Downloads/Screenshots` |
 
 When **`vault_path`** is set, **`put`** always merges into that file (not beside the PNG).
 

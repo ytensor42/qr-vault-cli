@@ -98,3 +98,12 @@ def test_default_vault_path_from_config(
     cfg.write_text(yaml.safe_dump({"vault_path": str(vault)}), encoding="utf-8")
     monkeypatch.setenv("COTP_CONFIG", str(cfg))
     assert main_mod.default_vault_path() == vault
+
+
+def test_default_vault_path_without_config(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("COTP_CONFIG", str(tmp_path / "missing.yaml"))
+    assert main_mod.default_vault_path() == tmp_path / ".config" / "cotp" / "qr-vault.yaml"

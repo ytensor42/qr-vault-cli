@@ -461,11 +461,15 @@ def merge_qr_vault_yaml(
     vault_path.write_text(text, encoding="utf-8")
 
 
+def default_cotp_config_dir() -> Path:
+    return Path.home() / ".config" / "cotp"
+
+
 def default_vault_path() -> Path:
     s = load_cotp_settings()
     if s.vault_path is not None:
         return s.vault_path
-    return default_qr_dir() / "qr-vault.yaml"
+    return default_cotp_config_dir() / "qr-vault.yaml"
 
 
 def load_qr_vault_mapping(path: Path) -> dict:
@@ -653,9 +657,9 @@ def format_get_output_line(
     timestamp: str | None = None,
     otp_code: str | None = None,
 ) -> str:
-    """One line per vault entry: fields space-separated; labels comma-separated only."""
+    """One line: ``HH:MM:SS key/username [otp] [labels]`` (labels comma-separated only)."""
     ts = timestamp if timestamp is not None else datetime.now().strftime("%H:%M:%S")
-    parts = [ts, vault_key, username]
+    parts = [ts, f"{vault_key}/{username}"]
     if otp_code is not None:
         parts.append(otp_code)
     labels_csv = format_labels_csv_for_line(entry)
@@ -766,6 +770,7 @@ def run_query(
     *,
     strict_labels: bool = False,
     totp_to_clipboard: bool = False,
+    wide_output: bool = False,
 ) -> None:
     path = default_vault_path()
     try:
@@ -814,7 +819,14 @@ def run_query(
         return
 
     clock, otp_code = _otp_for_get_entry(entry, datetime.now().strftime("%H:%M:%S"))
-    print(format_get_output(match_key, show_user, entry, timestamp=clock, otp_code=otp_code))
+    if wide_output:
+        print(format_get_output(match_key, show_user, entry, timestamp=clock, otp_code=otp_code))
+    else:
+        print(
+            format_get_output_line(
+                match_key, show_user, entry, timestamp=clock, otp_code=otp_code
+            )
+        )
 
     if not totp_to_clipboard:
         raw_pw = entry.get("password", "")
@@ -1033,7 +1045,10 @@ def argv_for_dispatch(argv: list[str] | None) -> list[str]:
     if first in _COMMANDS:
         return argv
     if first.startswith("-"):
-        if any(t in argv for t in ("-l", "--labels", "-t", "--totp-clipboard")):
+        if any(
+            t in argv
+            for t in ("-l", "--labels", "-t", "--totp-clipboard", "-w", "--wide")
+        ):
             return ["get", *argv]
         return argv
     if looks_like_implicit_put(argv):
@@ -1118,6 +1133,12 @@ def build_parser() -> argparse.ArgumentParser:
         dest="totp_clipboard",
         help="Also copy the TOTP code to the clipboard (after decoded password).",
     )
+    p_get.add_argument(
+        "-w",
+        "--wide",
+        action="store_true",
+        help="Multi-line aligned output (Timestamp/Key/Username/…); default is one line.",
+    )
 
     p_read = sub.add_parser(
         "read",
@@ -1166,6 +1187,7 @@ def main(argv: list[str] | None = None) -> None:
             get_labels,
             strict_labels=strict_labels,
             totp_to_clipboard=args.totp_clipboard,
+            wide_output=args.wide,
         )
     elif args.command == "read":
         run_read_png(args.file)

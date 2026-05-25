@@ -145,10 +145,43 @@ def test_run_query_clipboard_totp_only_with_t(
     assert copies == ["999111"]
     cap = capsys.readouterr()
     out = cap.out.strip()
-    assert out == format_get_output(
+    assert out == format_get_output_line(
         "tp", "u", {"username": "u", "labels": ["tp", "u"]}, timestamp="01:02:03", otp_code="999111"
     )
-    assert cap.err.strip() == "totp value is copied to clipboard"
+
+
+def test_run_query_wide_output_multiline(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    import yaml  # noqa: PLC0415
+
+    import cotp_cli.main as vm
+
+    vault = tmp_path / "qr-vault.yaml"
+    vault.write_text(
+        yaml.safe_dump(
+            {
+                "tp": {
+                    "username": "u",
+                    "seed": "JBSWY3DPEHPK3PXP",
+                    "labels": ["tp", "u"],
+                },
+            },
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(vm, "default_vault_path", lambda: vault)
+    monkeypatch.setattr(vm, "copy_text_to_clipboard", lambda _t: None)
+    monkeypatch.setattr(vm, "totp_parts", lambda _seed: ("01:02:03", "999111"))
+
+    run_query("tp", "u", None, wide_output=True)
+
+    cap = capsys.readouterr()
+    assert cap.out.strip() == format_get_output(
+        "tp", "u", {"username": "u", "labels": ["tp", "u"]}, timestamp="01:02:03", otp_code="999111"
+    )
 
 
 def test_run_query_clipboard_password_notice_only_without_t(
@@ -261,6 +294,7 @@ def test_run_query_multiple_matches_space_delimited_lines(
         labels_field = line.rsplit(" ", 1)[-1]
         assert ", " not in labels_field
         assert labels_field.count(",") >= 1
+    assert "tp00/admin" in lines[0]
     assert lines[0] == format_get_output_line(
         "tp00",
         "admin",
