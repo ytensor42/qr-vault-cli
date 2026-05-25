@@ -80,17 +80,44 @@ ensure_venv_python() {
   echo "$VENV_DIR/bin/python"
 }
 
+stage_source_in_tmp() {
+  local stage
+  stage="$(mktemp -d /tmp/cotp-src.XXXXXX)"
+  cp "$ROOT/pyproject.toml" "$stage/"
+  cp -R "$ROOT/cotp_cli" "$stage/"
+  [[ -f "$ROOT/README.md" ]] && cp "$ROOT/README.md" "$stage/"
+  [[ -f "$ROOT/LICENSE" ]] && cp "$ROOT/LICENSE" "$stage/"
+  echo "$stage"
+}
+
 pip_install_package() {
   local system_py="$1"
-  local venv_py
+  local venv_py stage
+  export TMPDIR="${TMPDIR:-/tmp}"
+  mkdir -p "$TMPDIR"
   venv_py="$(ensure_venv_python "$system_py")"
   note "installing cotp into $VENV_DIR (system Python packages are not modified)..."
   "$venv_py" -m pip install --upgrade pip wheel >/dev/null 2>&1 || true
+
+  if [[ "${COTP_INSTALL_FROM:-}" == pypi ]]; then
+    note "installing cotp-cli from PyPI..."
+    "$venv_py" -m pip install --upgrade cotp-cli || die "pip install cotp-cli from PyPI failed"
+    echo "$venv_py"
+    return 0
+  fi
+
   if [[ -f "$ROOT/pyproject.toml" ]]; then
-    "$venv_py" -m pip install --upgrade "$ROOT"
+    stage="$(stage_source_in_tmp)"
+    note "building from $stage (avoids long-path pip errors)..."
+    if ! "$venv_py" -m pip install --upgrade "$stage"; then
+      rm -rf "$stage"
+      die "pip install failed (if 'filename too long': use a short folder, e.g. ~/cotp-install, or COTP_INSTALL_FROM=pypi ./install.sh)"
+    fi
+    rm -rf "$stage"
   else
     note "no pyproject.toml here; installing from GitHub..."
-    "$venv_py" -m pip install --upgrade "$GITHUB_PKG"
+    "$venv_py" -m pip install --upgrade "$GITHUB_PKG" \
+      || die "pip install from GitHub failed"
   fi
   echo "$venv_py"
 }
@@ -165,21 +192,30 @@ should_cleanup() {
   return 0
 }
 
+cleanup_skip_name() {
+  case "$1" in
+    .venv | .git) return 0 ;;
+  esac
+  return 1
+}
+
 cleanup_install_tree() {
   if ! should_cleanup; then
     return 0
   fi
-  local item
+  local item name
   note "removing install files under $ROOT (cotp is already in $INSTALL_BINDIR/cotp)"
-  for item in "$ROOT"/*; do
+  for item in "$ROOT"/* "$ROOT"/.[!.]* "$ROOT"/..?*; do
     [[ -e "$item" ]] || continue
-    rm -rf "$item"
+    name="$(basename "$item")"
+    [[ "$name" == "." || "$name" == ".." ]] && continue
+    if cleanup_skip_name "$name"; then
+      note "skipping $name (remove manually if needed: rm -rf $(printf '%q' "$item"))"
+      continue
+    fi
+    rm -rf "$item" 2>/dev/null || note "warning: could not remove $name (delete manually)"
   done
-  for item in "$ROOT"/.[!.]* "$ROOT"/..?*; do
-    [[ -e "$item" ]] || continue
-    rm -rf "$item"
-  done
-  rm -f "$ROOT/install.sh"
+  rm -f "$ROOT/install.sh" 2>/dev/null || true
   note "done. on this machine you only need:"
   note "  $INSTALL_BINDIR/cotp"
   note "  $CONFIG_FILE"

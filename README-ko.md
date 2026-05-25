@@ -115,6 +115,8 @@ Python이 3.11 미만이면: `brew install python@3.12` 후 `python3`가 그 버
 
 **대안:** `pipx install cotp-cli` (격리 설치; `brew install pipx` 필요).
 
+**`filename too long`:** 설치 폴더 경로가 길거나 안에 `.venv` 가 있으면 발생할 수 있습니다. `~/cotp-install` 처럼 짧은 경로에서 `./install.sh` 를 실행하거나, PyPI만 쓰려면 `COTP_INSTALL_FROM=pypi ./install.sh`.
+
 **git clone** 안에서는 기본적으로 삭제하지 않습니다. 지우려면 `./install.sh --cleanup`. `install.sh`만 있는 폴더에서는 설치 후 스크립트까지 삭제됩니다.
 
 다른 경로: `INSTALL_BINDIR=/usr/local/bin ./install.sh`

@@ -111,6 +111,8 @@ The script will:
 
 **Alternative:** `pipx install cotp-cli` (also isolated; needs `brew install pipx` first).
 
+**`filename too long`:** Often a long install path or a bundled `.venv`. Run from a short directory (e.g. `~/cotp-install`), or use `COTP_INSTALL_FROM=pypi ./install.sh`.
+
 In a **git clone**, cleanup is skipped automatically (use `./install.sh --no-cleanup` or rely on that default). To wipe the clone after install: `./install.sh --cleanup`. For a folder with only `install.sh`, cleanup runs and deletes that script when finished.
 
 Install elsewhere:
