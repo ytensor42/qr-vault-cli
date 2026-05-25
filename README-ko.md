@@ -41,8 +41,10 @@ cotp put
 cotp put -f QR-tp00-alice-admin.png
 cotp put tp00 alice -f /path/to/qr.png      # QR PNG에서 시드 읽어 vault 갱신
 cotp put tp00 admin -l test                 # -f 없음: PNG 미사용, 기존 항목 메타(labels/password)만 갱신
+cotp put tp00 admin -p                      # -p만: 비밀번호 2회 입력·검증 후 Base64로 vault 저장 (Ctrl+C 중단)
+cotp put tp00 admin -p 'Base64문자열'       # vault password 필드에 그대로 저장 (get 클립보드용)
 cotp put tp00 admin -l test -f qr.png
-cotp tp00 admin -l test                     # put 생략 (-l / -f / -p 중 하나 있으면 put)
+cotp tp00 admin -p                          # put 생략 (-f / -p)
 ```
 
 ### `cotp get` — vault에서 TOTP + 비밀번호 클립보드

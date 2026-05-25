@@ -48,10 +48,40 @@ def random_password_12() -> str:
     return "".join(chars)
 
 
+def encode_password_plain_to_vault_b64(plain: str) -> str:
+    """Encode a plain password for the vault ``password`` field (standard Base64, UTF-8)."""
+    return base64.standard_b64encode(plain.encode("utf-8")).decode("ascii")
+
+
 def format_random_password_line(plain: str) -> str:
     """``<plain> <base64>`` for stdout (UTF-8 bytes encoded with standard Base64)."""
-    b64 = base64.standard_b64encode(plain.encode("utf-8")).decode("ascii")
-    return f"{plain} {b64}"
+    return f"{plain} {encode_password_plain_to_vault_b64(plain)}"
+
+
+def read_password_interactive_b64() -> str:
+    """Prompt twice (hidden); on match return vault Base64. ``Ctrl+C`` / EOF → exit 130."""
+    import getpass  # noqa: PLC0415
+
+    while True:
+        try:
+            first = getpass.getpass("Password: ")
+            second = getpass.getpass("Verify password: ")
+        except (KeyboardInterrupt, EOFError):
+            print(file=sys.stderr)
+            raise SystemExit(130) from None
+        if first != second:
+            print("error: passwords do not match", file=sys.stderr)
+            continue
+        return encode_password_plain_to_vault_b64(first)
+
+
+def resolve_put_password(password_arg: str | None) -> str | None:
+    """``None`` = leave vault password unchanged; ``-p`` alone = interactive Base64."""
+    if password_arg is None:
+        return None
+    if password_arg == "":
+        return read_password_interactive_b64()
+    return password_arg
 
 
 def default_qr_dir() -> Path:
@@ -1045,9 +1075,14 @@ def build_parser() -> argparse.ArgumentParser:
     p_put.add_argument(
         "-p",
         "--password",
+        nargs="?",
+        const="",
         default=None,
         metavar="PWD",
-        help="Password in vault entry (omit on update to keep existing).",
+        help=(
+            "Vault password (standard Base64). Omit flag to keep existing; "
+            "-p alone prompts twice and stores Base64 of the verified plain text."
+        ),
     )
     p_put.add_argument(
         "-l",
@@ -1113,7 +1148,7 @@ def main(argv: list[str] | None = None) -> None:
             parser.error("put: KEY and username must be given together")
         run_save_from_png(
             args.file,
-            args.password,
+            resolve_put_password(args.password),
             cluster=args.cluster,
             username=args.username,
             labels_csv=args.labels,

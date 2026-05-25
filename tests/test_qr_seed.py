@@ -10,6 +10,7 @@ from cotp_cli.main import (
     argv_for_dispatch,
     build_vault_update_hints,
     decode_vault_password_for_clipboard,
+    encode_password_plain_to_vault_b64,
     entry_matches_identity,
     extract_seeds_from_png,
     find_vault_entry_matches,
@@ -25,6 +26,8 @@ from cotp_cli.main import (
     parse_qr_filename,
     query_labels_for_get,
     random_password_12,
+    read_password_interactive_b64,
+    resolve_put_password,
     resolve_png_path,
     run_query,
     run_put_metadata_only,
@@ -46,6 +49,56 @@ def test_random_password_12() -> None:
         assert any(c in s.ascii_lowercase for c in p)
         assert any(c in s.digits for c in p)
         assert any(c in specials for c in p)
+
+
+def test_encode_password_plain_to_vault_b64() -> None:
+    import base64
+
+    assert encode_password_plain_to_vault_b64("pw") == base64.standard_b64encode(b"pw").decode("ascii")
+
+
+def test_resolve_put_password_none_and_literal() -> None:
+    assert resolve_put_password(None) is None
+    assert resolve_put_password("already-b64") == "already-b64"
+
+
+def test_read_password_interactive_b64_success(monkeypatch: pytest.MonkeyPatch) -> None:
+    import base64
+
+    prompts: list[str] = []
+
+    def fake_getpass(prompt: str = "") -> str:
+        prompts.append(prompt)
+        return "hunter2"
+
+    monkeypatch.setattr("getpass.getpass", fake_getpass)
+    assert read_password_interactive_b64() == base64.standard_b64encode(b"hunter2").decode()
+    assert prompts == ["Password: ", "Verify password: "]
+
+
+def test_read_password_interactive_b64_retries_on_mismatch(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    import base64
+
+    answers = iter(["a", "b", "same", "same"])
+
+    monkeypatch.setattr("getpass.getpass", lambda _prompt="": next(answers))
+    assert read_password_interactive_b64() == base64.standard_b64encode(b"same").decode()
+    assert "passwords do not match" in capsys.readouterr().err
+
+
+def test_read_password_interactive_b64_ctrl_c_exits_130(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def raise_interrupt(_prompt: str = "") -> str:
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr("getpass.getpass", raise_interrupt)
+    with pytest.raises(SystemExit) as exc:
+        read_password_interactive_b64()
+    assert exc.value.code == 130
 
 
 def test_decode_vault_password_for_clipboard() -> None:

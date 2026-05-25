@@ -95,6 +95,39 @@ def test_main_implicit_put_dispatches_to_put(
     assert data["lab"]["labels"] == ["lab", "bob"]
 
 
+def test_main_put_interactive_password_b64(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import base64
+    import yaml  # noqa: PLC0415
+
+    import cotp_cli.main as vm
+
+    vault = tmp_path / "qr-vault.yaml"
+    vault.write_text(
+        yaml.safe_dump(
+            {
+                "hanlab": {
+                    "username": "u@example.com",
+                    "seed": "SEEDKEEP",
+                    "password": "",
+                    "labels": ["hanlab", "u@example.com"],
+                },
+            },
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(vm, "default_vault_path", lambda: vault)
+    monkeypatch.setattr(vm, "read_password_interactive_b64", lambda: base64.b64encode(b"newpw").decode())
+
+    main(["put", "hanlab", "u@example.com", "-p"])
+
+    data = yaml.safe_load(vault.read_text(encoding="utf-8"))
+    assert data["hanlab"]["seed"] == "SEEDKEEP"
+    assert data["hanlab"]["password"] == base64.b64encode(b"newpw").decode()
+
+
 def test_main_implicit_put_without_file_flag(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

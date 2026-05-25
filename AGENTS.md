@@ -27,6 +27,8 @@
 |------|------|
 | 저장 시 **`labels`에 key·username 항상 포함** | `labels_for_vault_entry(cluster, username, extra)` |
 | 추가 라벨은 **위치 인자가 아니라 `-l` / `--labels`** (콤마 구분) | `put … -l test,prod` |
+| **`-p`만** (값 없음) → **대화형** 입력 2회·검증 후 **Base64 저장**; `Ctrl+C` → 종료(130) | `read_password_interactive_b64` |
+| **`-p <값>`** → 그 문자열을 vault에 그대로 저장(기존처럼 Base64 문자열 권장) | |
 | **`-f` 생략** = PNG 미읽음, **메타데이터만** 갱신(labels/password), **기존 seed 유지** | `run_put_metadata_only`; 신규 키는 seed `""` |
 | **`-f` 있을 때만** QR에서 시드 추출·stdout·vault merge | `run_save_from_png` |
 | 갱신은 **key + username + labels(집합)** 이 vault와 **정확히 1건** 일치할 때만 | 그 외 **거부** + stderr **hints** (같은 key / username / labels 겹침 등) |
