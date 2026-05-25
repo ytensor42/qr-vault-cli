@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-Security fixes are applied to the **latest release** on PyPI (`cotp-cli`) and the default branch of this repository.
+Security fixes are applied on the **default branch** of this repository (install from GitHub).
 
 ## Reporting a vulnerability
 

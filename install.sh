@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
-# Install cotp into ~/bin (or INSTALL_BINDIR). Leaves only ~/bin/cotp on the system;
-# removes this script and other files in the install directory when done.
+# Install cotp into ~/bin (or INSTALL_BINDIR). Uses ~/.cotp/venv (isolated; no PEP 668).
 #
 # Usage:
 #   ./install.sh              # install + remove files in this directory (except during run)
 #   ./install.sh --no-cleanup # keep repo (developers)
 #   ./install.sh --cleanup    # remove install dir even in a git clone
+#
+#   COTP_INSTALL_LOCAL=1 ./install.sh   # build from local pyproject (dev)
 #
 # Prerequisites (install first):
 #   macOS:  brew install zbar
@@ -17,11 +18,16 @@ ROOT="$(cd "$(dirname "$0")" && pwd)"
 INSTALL_BINDIR="${INSTALL_BINDIR:-$HOME/bin}"
 CONFIG_DIR="${HOME}/.config/cotp"
 CONFIG_FILE="${CONFIG_DIR}/config.yaml"
-VENV_DIR="${HOME}/.local/share/cotp/venv"
+VENV_DIR="${HOME}/.cotp/venv"
+VENV_PYTHON="${VENV_DIR}/bin/python"
 MIN_PYTHON=311
 NO_CLEANUP=0
 FORCE_CLEANUP=0
 GITHUB_PKG='cotp-cli @ git+https://github.com/ytensor42/qr-vault-cli.git'
+OLD_VENV_DIRS=(
+  "${HOME}/.local/share/cotp/venv"
+  "${HOME}/.cotp/venv"
+)
 
 die() {
   echo "cotp install: error: $*" >&2
@@ -37,6 +43,13 @@ need_cmd() {
 }
 
 python_bin() {
+  local c
+  for c in /opt/homebrew/bin/python3 /usr/local/bin/python3 /usr/bin/python3; do
+    if [[ -x "$c" ]]; then
+      echo "$c"
+      return
+    fi
+  done
   if command -v python3 >/dev/null 2>&1; then
     command -v python3
     return
@@ -71,13 +84,27 @@ verify_pyzbar() {
     || die "pyzbar cannot load zbar — install the system zbar library, then re-run"
 }
 
-ensure_venv_python() {
+remove_old_venvs() {
+  local d
+  for d in "${OLD_VENV_DIRS[@]}"; do
+    if [[ -d "$d" ]]; then
+      note "removing old venv: $d"
+      rm -rf "$d"
+    fi
+  done
+  rm -rf "${HOME}/.local/share/cotp" 2>/dev/null || true
+}
+
+create_venv() {
   local system_py="$1"
-  if [[ ! -x "$VENV_DIR/bin/python" ]]; then
-    note "creating private venv at $VENV_DIR (avoids PEP 668 / externally-managed-environment)..."
-    "$system_py" -m venv "$VENV_DIR"
+  remove_old_venvs
+  mkdir -p "${HOME}/.cotp"
+  note "creating venv at $VENV_DIR (fresh; --copies)..."
+  "$system_py" -m venv --copies "$VENV_DIR" || die "python -m venv failed"
+  if ! "$VENV_PYTHON" -c 'import sys; print(sys.version_info[:2])' >/dev/null 2>&1; then
+    rm -rf "$VENV_DIR"
+    die "venv python is broken (File name too long?). Remove ~/.cotp and ~/.local/share/cotp, then re-run."
   fi
-  echo "$VENV_DIR/bin/python"
 }
 
 stage_source_in_tmp() {
@@ -92,34 +119,23 @@ stage_source_in_tmp() {
 
 pip_install_package() {
   local system_py="$1"
-  local venv_py stage
+  local stage
   export TMPDIR="${TMPDIR:-/tmp}"
   mkdir -p "$TMPDIR"
-  venv_py="$(ensure_venv_python "$system_py")"
-  note "installing cotp into $VENV_DIR (system Python packages are not modified)..."
-  "$venv_py" -m pip install --upgrade pip wheel >/dev/null 2>&1 || true
+  create_venv "$system_py"
+  note "installing into $VENV_DIR (system Python site-packages untouched)..."
+  "$VENV_PYTHON" -m pip install --upgrade pip wheel >/dev/null 2>&1 || true
 
-  if [[ "${COTP_INSTALL_FROM:-}" == pypi ]]; then
-    note "installing cotp-cli from PyPI..."
-    "$venv_py" -m pip install --upgrade cotp-cli || die "pip install cotp-cli from PyPI failed"
-    echo "$venv_py"
-    return 0
-  fi
-
-  if [[ -f "$ROOT/pyproject.toml" ]]; then
+  if [[ "${COTP_INSTALL_LOCAL:-0}" == 1 ]] && [[ -f "$ROOT/pyproject.toml" ]]; then
     stage="$(stage_source_in_tmp)"
-    note "building from $stage (avoids long-path pip errors)..."
-    if ! "$venv_py" -m pip install --upgrade "$stage"; then
-      rm -rf "$stage"
-      die "pip install failed (if 'filename too long': use a short folder, e.g. ~/cotp-install, or COTP_INSTALL_FROM=pypi ./install.sh)"
-    fi
+    note "local build from $stage ..."
+    "$VENV_PYTHON" -m pip install --upgrade "$stage" || die "local pip install failed"
     rm -rf "$stage"
   else
-    note "no pyproject.toml here; installing from GitHub..."
-    "$venv_py" -m pip install --upgrade "$GITHUB_PKG" \
-      || die "pip install from GitHub failed"
+    note "installing from GitHub (main branch)..."
+    "$VENV_PYTHON" -m pip install --upgrade "$GITHUB_PKG" || die "pip install from GitHub failed"
   fi
-  echo "$venv_py"
+  echo "$VENV_PYTHON"
 }
 
 ensure_config_yaml() {
@@ -140,15 +156,14 @@ EOF
 }
 
 write_cotp_wrapper() {
-  local py="$1"
-  local dest="$2"
+  local dest="$1"
   local tmp
   tmp="$(mktemp)"
   cat >"$tmp" <<EOF
 #!/usr/bin/env bash
 set -euo pipefail
 export COTP_CONFIG="\${COTP_CONFIG:-${CONFIG_FILE}}"
-exec "$py" -m cotp_cli "\$@"
+exec "\${HOME}/.cotp/venv/bin/python" -m cotp_cli "\$@"
 EOF
   if [[ -w "$(dirname "$dest")" ]]; then
     install -m 755 "$tmp" "$dest"
@@ -233,7 +248,7 @@ parse_args() {
         FORCE_CLEANUP=1
         ;;
       -h | --help)
-        sed -n '2,12p' "$0"
+        sed -n '2,16p' "$0"
         exit 0
         ;;
       *)
@@ -257,13 +272,14 @@ main() {
 
   check_zbar_system
   venv_py="$(pip_install_package "$system_py")"
+  [[ "$venv_py" == "$VENV_PYTHON" ]] || die "unexpected venv python path"
   "$venv_py" -c "import cotp_cli" || die "cotp_cli import failed after pip install"
   verify_pyzbar "$venv_py"
 
   ensure_config_yaml
   ensure_bindir "$INSTALL_BINDIR"
   dest="$INSTALL_BINDIR/cotp"
-  write_cotp_wrapper "$venv_py" "$dest"
+  write_cotp_wrapper "$dest"
 
   note "installed: $dest (venv: $VENV_DIR)"
   if "$dest" --help >/dev/null 2>&1; then

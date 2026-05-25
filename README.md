@@ -1,10 +1,9 @@
 # cotp — CLI OTP / QR vault
 
 [![CI](https://github.com/ytensor42/qr-vault-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/ytensor42/qr-vault-cli/actions/workflows/ci.yml)
-[![PyPI version](https://img.shields.io/pypi/v/cotp-cli)](https://pypi.org/project/cotp-cli/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-**Open-source repository:** [**qr-vault-cli**](https://github.com/ytensor42/qr-vault-cli) — distributed on PyPI as [**cotp-cli**](https://pypi.org/project/cotp-cli/) with the **`cotp`** command.
+**Repository:** [**qr-vault-cli**](https://github.com/ytensor42/qr-vault-cli) — install from **GitHub source** (see below). CLI command: **`cotp`**.
 
 **cotp** is a short CLI for working with `qr-vault.yaml`, PNG QR codes, TOTP, and random passwords.
 
@@ -14,6 +13,7 @@
 
 - **Python 3.11+**
 - **zbar** (for pyzbar): macOS `brew install zbar` · Debian/Ubuntu `sudo apt install libzbar0`
+- **git** (for clone / `pip install` from GitHub)
 
 ## Configuration
 
@@ -31,7 +31,7 @@ Optional YAML (see repository [`config.example.yaml`](config.example.yaml)):
 
 ## Commands
 
-Package name on PyPI: **`cotp-cli`** (`pip install cotp-cli` or locally `pip install -e .`). Console script: **`cotp`**. Module entry: `python -m cotp_cli …`.
+After install, run **`cotp`** (or `python -m cotp_cli` inside the install venv).
 
 ### `cotp put` — read QR, print seed, update the vault
 
@@ -85,49 +85,57 @@ cotp random
 
 ## Install on another Mac
 
+Install from the **GitHub repository** (not PyPI). Push your latest changes to GitHub before installing on another machine.
+
 ### 1. Prerequisites (run once per machine)
 
 ```bash
-brew install zbar
+brew install zbar git
 python3 --version   # must be 3.11 or newer
 ```
 
 If Python is older than 3.11: `brew install python@3.12` and ensure `python3` points at it.
 
-### 2. Install `cotp` into `~/bin` (one command)
-
-Clone this repository, then from the directory that contains `install.sh`:
+### 2. Recommended: `install.sh` (puts `cotp` in `~/bin`)
 
 ```bash
+git clone https://github.com/ytensor42/qr-vault-cli.git
+cd qr-vault-cli
 ./install.sh
 ```
 
 The script will:
 
-1. Create a **private venv** at **`~/.local/share/cotp/venv`** and install cotp there (does **not** use `pip install --user` on Homebrew Python, so no **externally-managed-environment** error).
+1. Create a fresh **private venv** at **`~/.cotp/venv`** and install **`cotp-cli` from GitHub** (`main` branch).
 2. Create **`~/.config/cotp/config.yaml`** if missing (default `vault_path` and `qr_image_dir`).
 3. Install **`~/bin/cotp`** (wrapper → venv Python + `COTP_CONFIG`).
-4. **Delete** everything in the install folder, including **`install.sh`** — on the machine you keep `~/bin/cotp`, config, and the venv.
+4. Optionally **delete** the clone folder when finished (see script output).
 
-**Alternative:** `pipx install cotp-cli` (also isolated; needs `brew install pipx` first).
-
-**`filename too long`:** Often a long install path or a bundled `.venv`. Run from a short directory (e.g. `~/cotp-install`), or use `COTP_INSTALL_FROM=pypi ./install.sh`.
-
-In a **git clone**, cleanup is skipped automatically (use `./install.sh --no-cleanup` or rely on that default). To wipe the clone after install: `./install.sh --cleanup`. For a folder with only `install.sh`, cleanup runs and deletes that script when finished.
-
-Install elsewhere:
+**Unpublished changes on this Mac only** (install from the working tree, not GitHub):
 
 ```bash
-INSTALL_BINDIR=/usr/local/bin ./install.sh
+COTP_INSTALL_LOCAL=1 ./install.sh
 ```
+
+**Broken venv (`File name too long`):** `rm -rf ~/.cotp ~/.local/share/cotp`, then run `./install.sh` again.
+
+In a **git clone**, file cleanup is skipped by default. Use `./install.sh --cleanup` to remove the clone after install. Install elsewhere: `INSTALL_BINDIR=/usr/local/bin ./install.sh`.
 
 Ensure `~/bin` is on your `PATH`, then `cotp --help`.
 
-### 3. Configuration
+### 3. Manual: `pip install` from GitHub
+
+```bash
+python3 -m venv ~/.cotp/venv
+~/.cotp/venv/bin/pip install -U pip wheel
+~/.cotp/venv/bin/pip install "cotp-cli @ git+https://github.com/ytensor42/qr-vault-cli.git"
+```
+
+Add a `~/bin/cotp` wrapper that runs `~/.cotp/venv/bin/python -m cotp_cli "$@"` and set `COTP_CONFIG=~/.config/cotp/config.yaml` (see `install.sh`).
+
+### 4. Configuration
 
 `install.sh` creates **`~/.config/cotp/config.yaml`** when missing; the installed **`cotp`** command sets **`COTP_CONFIG`** to that path by default.
-
-Edit that file to change `vault_path` or `qr_image_dir`.
 
 | Defaults written by `install.sh` | |
 |----------------------------------|--|
@@ -136,32 +144,30 @@ Edit that file to change `vault_path` or `qr_image_dir`.
 
 When **`vault_path`** is set, **`put`** always merges into that file (not beside the PNG).
 
-### 4. Copy your vault
+### 5. Copy your vault
 
-`cotp` does not sync vault data for you. Copy **`qr-vault.yaml`** (or the path in `vault_path`) from the old Mac to the new one, e.g. AirDrop, `scp`, or encrypted backup.
+Copy **`qr-vault.yaml`** (or the path in `vault_path`) from the old Mac to the new one.
 
 ```bash
-chmod 600 ~/path/to/qr-vault.yaml
+chmod 600 ~/.config/cotp/qr-vault.yaml
 ```
 
-Treat this file like a password manager export (seeds and Base64-encoded passwords).
-
-### 5. Verify
+### 6. Verify
 
 ```bash
 cotp --help
 cotp get tp00 admin          # or: cotp -l your-label
 ```
 
-You should see TOTP on stdout; if the entry has a valid Base64 **`password`**, stderr reports `password is copied to clipboard` (use **`-t`** for TOTP-only clipboard).
-
 ---
 
 ## Development
 
-From the repository root:
+Clone the repo and use an editable install (same tree you are hacking on):
 
 ```bash
+git clone https://github.com/ytensor42/qr-vault-cli.git
+cd qr-vault-cli
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"

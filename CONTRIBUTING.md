@@ -1,6 +1,6 @@
 # Contributing
 
-Thank you for helping improve [**qr-vault-cli**](https://github.com/ytensor42/qr-vault-cli) (PyPI package **`cotp-cli`**, CLI **`cotp`**).
+Thank you for helping improve [**qr-vault-cli**](https://github.com/ytensor42/qr-vault-cli) (install from GitHub; CLI **`cotp`**).
 
 ## Ground rules
 

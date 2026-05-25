@@ -6,7 +6,7 @@
 
 ## 한 줄 요약
 
-**GitHub:** https://github.com/ytensor42/qr-vault-cli · **PyPI** **`cotp-cli`** · 로컬 경로 **`~/Projects/cotp`** · import **`cotp_cli`** · 콘솔 **`cotp`** (`python -m cotp_cli`). QR PNG에서 otpauth 시드를 읽고, **`qr-vault.yaml`** vault와 **TOTP `get`**, **`random`** 을 다룬다.
+**GitHub:** https://github.com/ytensor42/qr-vault-cli · 설치: GitHub 소스(`install.sh` / `git+https://…`) · 로컬 **`~/Projects/cotp`** · import **`cotp_cli`** · 콘솔 **`cotp`** (`python -m cotp_cli`). QR PNG에서 otpauth 시드를 읽고, **`qr-vault.yaml`** vault와 **TOTP `get`**, **`random`** 을 다룬다.
 
 ---
 
