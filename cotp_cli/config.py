@@ -71,9 +71,12 @@ def load_cotp_settings() -> CotpSettings:
     return CotpSettings(vault_path=vault, qr_image_dir=qr_dir)
 
 
-def vault_path_for_put(png_path: Path) -> Path:
-    """When ``vault_path`` is set in config, ``put`` merges into that file; else beside the PNG."""
+def vault_path_for_put(_png_path: Path) -> Path:
+    """Vault path for ``put`` (config ``vault_path`` or the default config directory vault)."""
     s = load_cotp_settings()
     if s.vault_path is not None:
         return s.vault_path
-    return png_path.parent / "qr-vault.yaml"
+    xdg = os.environ.get("XDG_CONFIG_HOME", "").strip()
+    if xdg:
+        return Path(xdg).expanduser() / "cotp" / "qr-vault.yaml"
+    return Path.home() / ".config" / "cotp" / "qr-vault.yaml"

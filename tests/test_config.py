@@ -69,13 +69,14 @@ def test_vault_path_for_put_uses_config(
     assert vault_path_for_put(png) == vault
 
 
-def test_vault_path_for_put_fallback_beside_png(
+def test_vault_path_for_put_fallback_default_config_dir(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("COTP_CONFIG", str(tmp_path / "missing.yaml"))
     png = tmp_path / "shots" / "QR-c-u.png"
-    assert vault_path_for_put(png) == png.parent / "qr-vault.yaml"
+    assert vault_path_for_put(png) == tmp_path / ".config" / "cotp" / "qr-vault.yaml"
 
 
 def test_default_qr_dir_from_config(

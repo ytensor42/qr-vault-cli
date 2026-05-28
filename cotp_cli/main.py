@@ -1123,7 +1123,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_put = sub.add_parser(
         "put",
-        help="Decode QR PNG and merge into the vault (beside the PNG, or vault_path in config).",
+        help="Decode QR PNG and merge into the configured vault (vault_path or default config dir).",
     )
     p_put.add_argument(
         "cluster",

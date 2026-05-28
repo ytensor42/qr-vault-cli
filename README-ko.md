@@ -26,7 +26,7 @@
 
 | 키 | 의미 |
 |----|------|
-| `vault_path` | `qr-vault.yaml` 경로. **`get`** 에 사용. 설정 시 **`put`** 은 PNG 옆이 아니라 이 파일에 병합합니다. |
+| `vault_path` | `qr-vault.yaml` 경로. **`get`** / **`put`** 에서 사용. 미설정 시 둘 다 기본값 `~/.config/cotp/qr-vault.yaml` (또는 `$XDG_CONFIG_HOME/cotp/qr-vault.yaml`)을 사용합니다. |
 | `qr_image_dir` | **`put`** / **`read`** 에서 `-f` 생략 시 기본 PNG 폴더. 생략 시 `~/Downloads/Screenshots` |
 
 ## 명령

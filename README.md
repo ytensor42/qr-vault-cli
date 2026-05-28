@@ -26,7 +26,7 @@ Optional YAML (see repository [`config.example.yaml`](config.example.yaml)):
 
 | Key | Meaning |
 |-----|---------|
-| `vault_path` | Path to `qr-vault.yaml`. Used by **`get`**. If set, **`put`** merges into this file instead of creating/updating `qr-vault.yaml` next to the PNG. |
+| `vault_path` | Path to `qr-vault.yaml`. Used by **`get`** and **`put`**. If omitted, both commands use the default `~/.config/cotp/qr-vault.yaml` (or `$XDG_CONFIG_HOME/cotp/qr-vault.yaml`). |
 | `qr_image_dir` | Default directory for **`put`** / **`read`** when `-f` is omitted (newest `.png` there), and the base for relative `-f` paths. If omitted, defaults to `~/Downloads/Screenshots`. |
 
 ## Commands
@@ -141,7 +141,7 @@ Add a `~/bin/cotp` wrapper that runs `~/.cotp/venv/bin/python -m cotp_cli "$@"` 
 | **`vault_path`** | `~/.config/cotp/qr-vault.yaml` |
 | **`qr_image_dir`** | `~/Downloads/Screenshots` |
 
-When **`vault_path`** is set, **`put`** always merges into that file (not beside the PNG).
+`put` writes to `vault_path` when set; otherwise it writes to the default config-dir vault path.
 
 ### 5. Copy your vault
 
