@@ -87,8 +87,8 @@ def test_main_implicit_put_dispatches_to_put(
     main(["lab", "bob", "-f", str(png)])
 
     data = yaml.safe_load(vault.read_text(encoding="utf-8"))
-    assert data["lab"]["username"] == "bob"
-    assert data["lab"]["labels"] == ["lab", "bob"]
+    assert data["lab"][0]["username"] == "bob"
+    assert data["lab"][0]["labels"] == ["lab", "bob"]
 
 
 def test_main_put_interactive_password_b64(
@@ -120,8 +120,8 @@ def test_main_put_interactive_password_b64(
     main(["put", "hanlab", "u@example.com", "-p"])
 
     data = yaml.safe_load(vault.read_text(encoding="utf-8"))
-    assert data["hanlab"]["seed"] == "SEEDKEEP"
-    assert data["hanlab"]["password"] == base64.b64encode(b"newpw").decode()
+    assert data["hanlab"][0]["seed"] == "SEEDKEEP"
+    assert data["hanlab"][0]["password"] == base64.b64encode(b"newpw").decode()
 
 
 def test_main_implicit_put_without_file_flag(
@@ -159,8 +159,8 @@ def test_main_implicit_put_without_file_flag(
 
     assert called == []
     data = yaml.safe_load(vault.read_text(encoding="utf-8"))
-    assert data["tp00"]["seed"] == "KEEPSEED"
-    assert data["tp00"]["labels"] == ["tp00", "admin", "test"]
+    assert data["tp00"][0]["seed"] == "KEEPSEED"
+    assert data["tp00"][0]["labels"] == ["tp00", "admin", "test"]
 
 
 def test_main_get_key_and_labels_without_username(
@@ -242,7 +242,7 @@ def test_main_put_accepts_labels_flag(
     main(["put", "lab", "bob", "-l", "test", "-f", str(png)])
 
     data = yaml.safe_load(vault.read_text(encoding="utf-8"))
-    assert data["lab"]["labels"] == ["lab", "bob", "test"]
+    assert data["lab"][0]["labels"] == ["lab", "bob", "test"]
 
 
 def test_main_random_prints_plain_and_base64(capsys: pytest.CaptureFixture[str]) -> None:

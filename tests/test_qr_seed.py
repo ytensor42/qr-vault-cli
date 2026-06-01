@@ -487,9 +487,9 @@ def test_run_save_from_png_explicit_key_user_labels(
     run_save_from_png(png, None, cluster="tp00", username="alice")
 
     data = yaml.safe_load(vault.read_text(encoding="utf-8"))
-    assert data["tp00"]["seed"] == "SEEDX"
-    assert data["tp00"]["username"] == "alice"
-    assert data["tp00"]["labels"] == ["tp00", "alice"]
+    assert data["tp00"][0]["seed"] == "SEEDX"
+    assert data["tp00"][0]["username"] == "alice"
+    assert data["tp00"][0]["labels"] == ["tp00", "alice"]
 
 
 def test_run_put_metadata_only_updates_labels_preserves_seed(
@@ -519,9 +519,9 @@ def test_run_put_metadata_only_updates_labels_preserves_seed(
     run_put_metadata_only(None, cluster="tp00", username="admin", labels_csv="test")
 
     data = yaml.safe_load(vault.read_text(encoding="utf-8"))
-    assert data["tp00"]["seed"] == "SEEDKEEP"
-    assert data["tp00"]["labels"] == ["tp00", "admin", "test"]
-    assert data["tp00"]["password"] == "old"
+    assert data["tp00"][0]["seed"] == "SEEDKEEP"
+    assert data["tp00"][0]["labels"] == ["tp00", "admin", "test"]
+    assert data["tp00"][0]["password"] == "old"
 
 
 def test_run_put_metadata_only_requires_key_user(capsys: pytest.CaptureFixture[str]) -> None:
@@ -554,7 +554,7 @@ def test_run_save_from_png_cli_labels(
     )
 
     data = yaml.safe_load(vault.read_text(encoding="utf-8"))
-    assert data["tp00"]["labels"] == ["tp00", "admin", "test", "prod"]
+    assert data["tp00"][0]["labels"] == ["tp00", "admin", "test", "prod"]
 
 
 def test_seed_for_cluster_user_labels_ok_and_order_insensitive() -> None:
@@ -587,7 +587,7 @@ def test_format_totp_with_clock_shape() -> None:
 def test_seed_for_cluster_username_any_labels() -> None:
     data = {"tp00": {"username": "alice", "seed": "X", "labels": ["z", "y"]}}
     assert seed_for_cluster_username_any_labels(data, "tp00", "alice") == "X"
-    with pytest.raises(KeyError):
+    with pytest.raises(ValueError, match="username"):
         seed_for_cluster_username_any_labels(data, "missing", "alice")
 
 
@@ -650,13 +650,13 @@ def test_merge_qr_vault_yaml_create_merge_update(tmp_path: Path) -> None:
     merge_qr_vault_yaml(vault, "tp00", "alice", labels_alice, "SEED3", None)
 
     data = yaml.safe_load(vault.read_text(encoding="utf-8"))
-    assert data["tp00"]["seed"] == "SEED3"
-    assert data["tp00"]["username"] == "alice"
-    assert data["tp00"]["password"] == ""
-    assert data["tp00"]["labels"] == labels_alice
-    assert data["other"]["seed"] == "SEED2"
-    assert data["other"]["username"] == "bob"
-    assert data["other"]["password"] == "pw2"
+    assert data["tp00"][0]["seed"] == "SEED3"
+    assert data["tp00"][0]["username"] == "alice"
+    assert data["tp00"][0]["password"] == ""
+    assert data["tp00"][0]["labels"] == labels_alice
+    assert data["other"][0]["seed"] == "SEED2"
+    assert data["other"][0]["username"] == "bob"
+    assert data["other"][0]["password"] == "pw2"
 
 
 def test_merge_qr_vault_yaml_rejects_label_change(tmp_path: Path) -> None:
@@ -664,12 +664,11 @@ def test_merge_qr_vault_yaml_rejects_label_change(tmp_path: Path) -> None:
     labels_alice = labels_for_vault_entry("tp00", "alice", ["admin"])
     merge_qr_vault_yaml(vault, "tp00", "alice", labels_alice, "SEED1", None)
     want = labels_for_vault_entry("tp00", "alice", ["admin", "prod"])
-    with pytest.raises(VaultUpdateError, match="no entry matches") as exc:
+    with pytest.raises(VaultUpdateError, match="different labels") as exc:
         merge_qr_vault_yaml(vault, "tp00", "alice", want, "SEED3", None)
     assert "tp00" in exc.value.hints
     assert "alice" in exc.value.hints
     assert "admin" in exc.value.hints
-    assert "same key" in exc.value.hints
 
 
 def test_merge_qr_vault_yaml_rejects_ambiguous_matches(tmp_path: Path) -> None:
@@ -723,17 +722,36 @@ def test_find_vault_entry_matches_list_slot() -> None:
     assert entry_matches_identity(data["tp00"][1], "alice", labels)
 
 
+def test_merge_qr_vault_yaml_appends_new_username_under_key(tmp_path: Path) -> None:
+    import yaml  # noqa: PLC0415
+
+    vault = tmp_path / "qr-vault.yaml"
+    labels_u = labels_for_vault_entry("handemo", "han.cho@goteleport.com", ["internal"])
+    merge_qr_vault_yaml(vault, "handemo", "han.cho@goteleport.com", labels_u, "SEED1", "pw1")
+    labels_admin = labels_for_vault_entry("handemo", "admin", ["internal"])
+    merge_qr_vault_yaml(vault, "handemo", "admin", labels_admin, "SEED2", "pw2")
+
+    data = yaml.safe_load(vault.read_text(encoding="utf-8"))
+    assert len(data["handemo"]) == 2
+    assert data["handemo"][0]["username"] == "han.cho@goteleport.com"
+    assert data["handemo"][0]["seed"] == "SEED1"
+    assert data["handemo"][1]["username"] == "admin"
+    assert data["handemo"][1]["seed"] == "SEED2"
+
+
 def test_merge_qr_vault_yaml_password_preserve_and_override(tmp_path: Path) -> None:
     import yaml  # noqa: PLC0415
 
     vault = tmp_path / "qr-vault.yaml"
     labels = labels_for_vault_entry("c", "u", [])
     merge_qr_vault_yaml(vault, "c", "u", labels, "S1", "secret1")
-    with pytest.raises(VaultUpdateError, match="no entry matches"):
-        merge_qr_vault_yaml(vault, "c", "u2", labels_for_vault_entry("c", "u2", ["l"]), "S2", None)
-    assert yaml.safe_load(vault.read_text())["c"]["password"] == "secret1"
+    merge_qr_vault_yaml(vault, "c", "u2", labels_for_vault_entry("c", "u2", ["l"]), "S2", None)
+    data = yaml.safe_load(vault.read_text())
+    assert len(data["c"]) == 2
+    assert data["c"][0]["password"] == "secret1"
+    assert data["c"][1]["username"] == "u2"
     merge_qr_vault_yaml(vault, "c", "u", labels, "S3", "newpw")
-    assert yaml.safe_load(vault.read_text())["c"]["password"] == "newpw"
+    assert yaml.safe_load(vault.read_text())["c"][0]["password"] == "newpw"
 
 
 def test_merge_qr_vault_yaml_rejects_non_mapping(tmp_path: Path) -> None:

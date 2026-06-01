@@ -354,14 +354,47 @@ def _get_vault_slot(data: dict, key: str, idx: int | None) -> dict:
     return entry
 
 
-def _set_vault_slot(data: dict, key: str, idx: int | None, entry: dict) -> None:
+def _make_vault_entry(
+    username: str,
+    labels: list[str],
+    seed: str,
+    password: str,
+) -> dict:
+    return {
+        "seed": seed,
+        "username": username,
+        "password": password,
+        "labels": list(labels),
+    }
+
+
+def _append_vault_entry(data: dict, key: str, entry: dict) -> None:
+    value = data.get(key)
+    if value is None:
+        data[key] = [entry]
+        return
+    if _looks_like_vault_entry(value):
+        data[key] = [value, entry]
+        return
+    if isinstance(value, list):
+        value.append(entry)
+        return
+    msg = f"error: vault key {key!r} is not a valid entry or list"
+    raise ValueError(msg)
+
+
+def _replace_vault_slot(data: dict, key: str, idx: int | None, entry: dict) -> None:
     if idx is None:
-        data[key] = entry
+        data[key] = [entry]
         return
     slot = data[key]
     if not isinstance(slot, list):
         raise ValueError(f"error: vault key {key!r} is not a list")
     slot[idx] = entry
+
+
+def _set_vault_slot(data: dict, key: str, idx: int | None, entry: dict) -> None:
+    _replace_vault_slot(data, key, idx, entry)
 
 
 def merge_qr_vault_yaml(
@@ -374,7 +407,7 @@ def merge_qr_vault_yaml(
     *,
     match_identity_labels: bool = True,
 ) -> None:
-    """Merge into ``qr-vault.yaml``; update only when exactly one entry matches (see ``match_identity_labels``)."""
+    """Merge into ``qr-vault.yaml``; update one match, append new username under an existing key."""
     if vault_path.is_file():
         raw = vault_path.read_text(encoding="utf-8")
         data = yaml.safe_load(raw) if raw.strip() else {}
@@ -392,6 +425,7 @@ def merge_qr_vault_yaml(
         matches = find_vault_entry_matches_by_user(data, cluster_name, username)
 
     if len(matches) != 1:
+        msg = ""
         if len(matches) > 1:
             if match_identity_labels:
                 msg = (
@@ -403,19 +437,17 @@ def merge_qr_vault_yaml(
                     f"error: {len(matches)} vault entries match key={cluster_name!r} "
                     f"username={username!r}; refusing to update"
                 )
-        elif cluster_name in data:
-            if match_identity_labels:
+        elif cluster_name in data and match_identity_labels:
+            user_matches = find_vault_entry_matches_by_user(data, cluster_name, username)
+            if user_matches:
                 msg = (
-                    f"error: vault key {cluster_name!r} exists but no entry matches "
-                    f"username={username!r} labels={labels!r}; refusing to overwrite"
+                    f"error: vault key {cluster_name!r} has username={username!r} "
+                    f"with different labels than {labels!r}; refusing to overwrite"
                 )
-            else:
-                msg = (
-                    f"error: vault key {cluster_name!r} exists but no entry matches "
-                    f"username={username!r}; refusing to overwrite"
+                hints = build_vault_update_hints(
+                    data, cluster_name, username, labels, user_matches
                 )
-        else:
-            msg = ""  # create path below
+                raise VaultUpdateError(msg, hints)
         if msg:
             hint_matches = (
                 matches
@@ -433,24 +465,25 @@ def merge_qr_vault_yaml(
         raw_p = prev.get("password", "")
         prev_pwd = raw_p if isinstance(raw_p, str) else ""
         seed_out = seed if seed is not None else _seed_from_entry_or_empty(prev)
-        new_entry = {
-            "seed": seed_out,
-            "username": username,
-            "password": password if password is not None else prev_pwd,
-            "labels": list(labels),
-        }
+        new_entry = _make_vault_entry(
+            username,
+            labels,
+            seed_out,
+            password if password is not None else prev_pwd,
+        )
         _set_vault_slot(data, key, idx, new_entry)
+    elif cluster_name not in data:
+        seed_out = "" if seed is None else seed
+        pwd = "" if password is None else password
+        data[cluster_name] = [_make_vault_entry(username, labels, seed_out, pwd)]
     else:
-        if seed is None:
-            seed_out = ""
-        else:
-            seed_out = seed
-        data[cluster_name] = {
-            "seed": seed_out,
-            "username": username,
-            "password": password if password is not None else "",
-            "labels": list(labels),
-        }
+        seed_out = "" if seed is None else seed
+        pwd = "" if password is None else password
+        _append_vault_entry(
+            data,
+            cluster_name,
+            _make_vault_entry(username, labels, seed_out, pwd),
+        )
 
     text = yaml.safe_dump(
         data,
@@ -582,26 +615,36 @@ def first_username_from_entry(entry: dict) -> str:
     raise ValueError("entry has no usable username")
 
 
-def seed_for_cluster_name_only(data: dict, cluster_name: str) -> str:
-    """Resolve seed for a cluster key; requires a usable username (first if list)."""
-    entry = data.get(cluster_name)
-    if not isinstance(entry, dict):
+def _first_slot_entry_for_key(data: dict, cluster_name: str) -> dict:
+    value = data.get(cluster_name)
+    if value is None:
         raise KeyError(f"no vault entry for cluster {cluster_name!r}")
+    slots = _iter_slots_under_key(value)
+    if not slots:
+        raise KeyError(f"no vault entry for cluster {cluster_name!r}")
+    return slots[0][1]
+
+
+def seed_for_cluster_name_only(data: dict, cluster_name: str) -> str:
+    """Resolve seed for a cluster key; uses the first slot under the key."""
+    entry = _first_slot_entry_for_key(data, cluster_name)
     first_username_from_entry(entry)
     return _seed_from_entry(entry)
 
 
 def seed_for_cluster_username_any_labels(data: dict, cluster_name: str, username: str) -> str:
-    entry = data.get(cluster_name)
-    if not isinstance(entry, dict):
-        raise KeyError(f"no vault entry for cluster {cluster_name!r}")
-    vault_user = first_username_from_entry(entry)
-    if vault_user != username.strip():
+    matches = find_vault_entry_matches_by_user(data, cluster_name, username)
+    if len(matches) != 1:
+        if not matches:
+            raise ValueError(
+                f"username mismatch: no entry for {cluster_name!r} with username {username!r}"
+            )
         raise ValueError(
-            "username mismatch: vault has "
-            f"{vault_user!r} (first if list), expected {username!r}"
+            f"username mismatch: {len(matches)} entries for {cluster_name!r} "
+            f"with username {username!r}"
         )
-    return _seed_from_entry(entry)
+    _key, idx = matches[0]
+    return _seed_from_entry(_get_vault_slot(data, cluster_name, idx))
 
 
 def seed_for_cluster_user_labels(
@@ -610,25 +653,19 @@ def seed_for_cluster_user_labels(
     username: str,
     labels: list[str],
 ) -> str:
-    entry = data.get(cluster_name)
-    if not isinstance(entry, dict):
-        raise KeyError(f"no vault entry for cluster {cluster_name!r}")
-    vault_user = first_username_from_entry(entry)
-    if vault_user != username.strip():
+    matches = find_vault_entry_matches(data, cluster_name, username, labels)
+    if len(matches) != 1:
+        if not matches:
+            raise ValueError(
+                f"no vault entry for {cluster_name!r} with username {username!r} "
+                f"and labels {labels!r}"
+            )
         raise ValueError(
-            "username mismatch: vault has "
-            f"{vault_user!r} (first if list), expected {username!r}"
+            f"{len(matches)} vault entries match {cluster_name!r} "
+            f"username={username!r} labels={labels!r}"
         )
-    raw_labels = entry.get("labels") or []
-    if not isinstance(raw_labels, list):
-        raise ValueError("entry labels must be a YAML list")
-    vault_labels = [str(x).strip() for x in raw_labels]
-    want = [str(x).strip() for x in labels]
-    if sorted(vault_labels) != sorted(want):
-        raise ValueError(
-            f"labels mismatch: vault has {vault_labels!r}, expected (same multiset) {want!r}"
-        )
-    return _seed_from_entry(entry)
+    _key, idx = matches[0]
+    return _seed_from_entry(_get_vault_slot(data, cluster_name, idx))
 
 
 def totp_parts(seed: str) -> tuple[str, str]:
