@@ -2,64 +2,41 @@
 # Install cotp into ~/bin (or INSTALL_BINDIR). Uses ~/.cotp/venv (isolated; no PEP 668).
 #
 # Usage:
-#   ./install.sh              # install + remove files in this directory (except during run)
-#   ./install.sh --no-cleanup # keep repo (developers)
-#   ./install.sh --cleanup    # remove install dir even in a git clone
+#   ./install.sh                 # full install (local tree if pyproject.toml present, else GitHub)
+#   ./install.sh --preflight     # check prerequisites only; exit 0 if ready
+#   ./install.sh --verify        # verify existing install; exit 0 if OK
+#   ./install.sh --no-cleanup    # keep repo (developers)
+#   ./install.sh --cleanup       # remove install dir even in a git clone
+#   ./install.sh --bin-only      # only ~/bin/cotp (venv already at ~/.cotp/venv)
 #
-#   COTP_INSTALL_LOCAL=1 ./install.sh   # build from local pyproject (dev)
-#   ./install.sh --bin-only             # only ~/bin/cotp (venv already at ~/.cotp/venv)
+#   COTP_INSTALL_LOCAL=1 ./install.sh   # force build from this directory
+#   COTP_INSTALL_GITHUB=1 ./install.sh  # force GitHub (ignore local tree)
 #
-# Prerequisites (install first):
-#   macOS:  brew install zbar
-#           brew install python@3.12   # if python3 < 3.11
-#   Linux:  sudo apt install libzbar0
+# Prerequisites (macOS):
+#   brew install zbar git python@3.12
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
-if [[ -z "${HOME:-}" ]]; then
-  die "HOME is not set; cannot install to ~/bin"
-fi
-INSTALL_BINDIR="${INSTALL_BINDIR:-${HOME}/bin}"
-CONFIG_DIR="${HOME}/.config/cotp"
+INSTALL_BINDIR="${INSTALL_BINDIR:-${HOME:-}/bin}"
+CONFIG_DIR="${HOME:-}/.config/cotp"
 CONFIG_FILE="${CONFIG_DIR}/config.yaml"
-VENV_DIR="${HOME}/.cotp/venv"
+VENV_DIR="${HOME:-}/.cotp/venv"
 VENV_PYTHON="${VENV_DIR}/bin/python"
 MIN_PYTHON=311
 NO_CLEANUP=0
 FORCE_CLEANUP=0
 BIN_ONLY=0
+PREFLIGHT_ONLY=0
+VERIFY_ONLY=0
 GITHUB_PKG='cotp-cli @ git+https://github.com/ytensor42/qr-vault-cli.git'
 OLD_VENV_DIRS=(
-  "${HOME}/.local/share/cotp/venv"
-  "${HOME}/.cotp/venv"
+  "${HOME:-}/.local/share/cotp/venv"
+  "${HOME:-}/.cotp/venv"
 )
-
-INSTALL_SUCCEEDED=0
 
 die() {
   echo "cotp install: error: $*" >&2
   exit 1
-}
-
-install_failed_hint() {
-  local rc="${1:-1}"
-  echo "cotp install: failed (exit $rc) before completion." >&2
-  if [[ -x "${INSTALL_BINDIR}/cotp" ]]; then
-    echo "cotp install:   ${INSTALL_BINDIR}/cotp — present" >&2
-  else
-    echo "cotp install:   ${INSTALL_BINDIR}/cotp — missing (wrapper is written only after venv + pyzbar checks)" >&2
-  fi
-  if [[ -f "$CONFIG_FILE" ]]; then
-    echo "cotp install:   $CONFIG_FILE — present" >&2
-  else
-    echo "cotp install:   $CONFIG_FILE — missing" >&2
-  fi
-  if [[ -x "$VENV_PYTHON" ]] && "$VENV_PYTHON" -c "import cotp_cli" 2>/dev/null; then
-    echo "cotp install: retry wrapper only:  ./install.sh --bin-only" >&2
-  else
-    echo "cotp install: fix the error above, then re-run:  ./install.sh" >&2
-    echo "cotp install: prerequisites (macOS):  brew install zbar git python@3.12" >&2
-  fi
 }
 
 note() {
@@ -72,7 +49,9 @@ need_cmd() {
 
 python_bin() {
   local c
-  for c in /opt/homebrew/bin/python3 /usr/local/bin/python3 /usr/bin/python3; do
+  for c in /opt/homebrew/bin/python3.12 /opt/homebrew/bin/python3.13 \
+           /opt/homebrew/bin/python3 /usr/local/bin/python3.12 \
+           /usr/local/bin/python3 /usr/bin/python3; do
     if [[ -x "$c" ]]; then
       echo "$c"
       return
@@ -82,7 +61,7 @@ python_bin() {
     command -v python3
     return
   fi
-  die "python3 not found (need Python 3.11+; macOS: brew install python@3.12)"
+  die "python3 not found — macOS: brew install python@3.12"
 }
 
 check_python_version() {
@@ -90,26 +69,165 @@ check_python_version() {
   local ver
   ver="$("$py" -c 'import sys; print(f"{sys.version_info.major}{sys.version_info.minor:02d}")')"
   if [[ "$ver" -lt "$MIN_PYTHON" ]]; then
-    die "Python 3.11+ required (found $($py --version 2>&1)); macOS: brew install python@3.12"
+    die "Python 3.11+ required (found $($py --version 2>&1)) — macOS: brew install python@3.12"
   fi
+}
+
+check_home() {
+  [[ -n "${HOME:-}" ]] || die "HOME is not set; cannot install to ~/bin"
+  INSTALL_BINDIR="${INSTALL_BINDIR:-${HOME}/bin}"
+  CONFIG_DIR="${HOME}/.config/cotp"
+  CONFIG_FILE="${CONFIG_DIR}/config.yaml"
+  VENV_DIR="${HOME}/.cotp/venv"
+  VENV_PYTHON="${VENV_DIR}/bin/python"
 }
 
 check_zbar_system() {
   case "$(uname -s)" in
     Darwin)
-      command -v brew >/dev/null 2>&1 || die "Homebrew not found; install zbar manually, then re-run"
-      brew list zbar &>/dev/null || die "install zbar first: brew install zbar"
+      command -v brew >/dev/null 2>&1 || die "Homebrew not found — install from https://brew.sh then: brew install zbar"
+      if ! brew list zbar &>/dev/null; then
+        die "zbar not installed — run: brew install zbar"
+      fi
       ;;
     Linux)
-      note "Linux: ensure libzbar is installed (e.g. sudo apt install libzbar0)"
+      if [[ -f /usr/lib/x86_64-linux-gnu/libzbar.so ]] \
+        || [[ -f /usr/lib/libzbar.so ]] \
+        || ldconfig -p 2>/dev/null | grep -q libzbar; then
+        return 0
+      fi
+      die "libzbar not found — run: sudo apt install libzbar0"
       ;;
   esac
 }
 
 verify_pyzbar() {
   local py="$1"
-  "$py" -c "from pyzbar.pyzbar import zbar_version; zbar_version()" \
-    || die "pyzbar cannot load zbar — install the system zbar library, then re-run"
+  "$py" -c "from pyzbar.pyzbar import decode  # noqa: F401" \
+    || die "pyzbar cannot load zbar — macOS: brew install zbar; then re-run ./install.sh"
+}
+
+use_local_source() {
+  [[ "${COTP_INSTALL_GITHUB:-0}" == 1 ]] && return 1
+  [[ "${COTP_INSTALL_LOCAL:-0}" == 1 ]] && return 0
+  [[ -f "$ROOT/pyproject.toml" && -f "$ROOT/cotp_cli/main.py" ]]
+}
+
+preflight_checks() {
+  local py ver failures=0
+  check_home
+  note "preflight: HOME=$HOME"
+  note "preflight: will install to $INSTALL_BINDIR/cotp and $CONFIG_FILE"
+
+  py=""
+  for c in /opt/homebrew/bin/python3.12 /opt/homebrew/bin/python3.13 \
+           /opt/homebrew/bin/python3 /usr/local/bin/python3.12 \
+           /usr/local/bin/python3 /usr/bin/python3; do
+    [[ -x "$c" ]] && py="$c" && break
+  done
+  if [[ -z "$py" ]] && command -v python3 >/dev/null 2>&1; then
+    py="$(command -v python3)"
+  fi
+  if [[ -z "$py" ]]; then
+    note "preflight: FAIL python3 not found — brew install python@3.12"
+    failures=$((failures + 1))
+  else
+    note "preflight: ok python=$py ($($py --version 2>&1))"
+    ver="$("$py" -c 'import sys; print(f"{sys.version_info.major}{sys.version_info.minor:02d}")')"
+    if [[ "$ver" -lt "$MIN_PYTHON" ]]; then
+      note "preflight: FAIL Python 3.11+ required"
+      failures=$((failures + 1))
+    fi
+  fi
+
+  if command -v git >/dev/null 2>&1; then
+    note "preflight: ok git"
+  else
+    note "preflight: FAIL git not found — brew install git"
+    failures=$((failures + 1))
+  fi
+
+  case "$(uname -s)" in
+    Darwin)
+      if ! command -v brew >/dev/null 2>&1; then
+        note "preflight: FAIL Homebrew missing"
+        failures=$((failures + 1))
+      elif ! brew list zbar &>/dev/null; then
+        note "preflight: FAIL run: brew install zbar"
+        failures=$((failures + 1))
+      else
+        note "preflight: ok zbar (brew)"
+      fi
+      ;;
+    Linux)
+      if [[ -f /usr/lib/x86_64-linux-gnu/libzbar.so ]] \
+        || [[ -f /usr/lib/libzbar.so ]] \
+        || ldconfig -p 2>/dev/null | grep -q libzbar; then
+        note "preflight: ok libzbar"
+      else
+        note "preflight: FAIL run: sudo apt install libzbar0"
+        failures=$((failures + 1))
+      fi
+      ;;
+  esac
+
+  if use_local_source; then
+    note "preflight: ok install source=local ($ROOT)"
+  else
+    note "preflight: install source=GitHub (needs network)"
+    if ! git ls-remote https://github.com/ytensor42/qr-vault-cli.git HEAD &>/dev/null; then
+      note "preflight: FAIL cannot reach GitHub (or copy this repo and run from it for offline local install)"
+      failures=$((failures + 1))
+    else
+      note "preflight: ok GitHub reachable"
+    fi
+  fi
+
+  local parent="${INSTALL_BINDIR%/*}"
+  if [[ -d "$INSTALL_BINDIR" ]] || [[ -w "$parent" ]]; then
+    note "preflight: ok writable install dir parent ($parent)"
+  else
+    note "preflight: FAIL cannot create $INSTALL_BINDIR (check permissions)"
+    failures=$((failures + 1))
+  fi
+
+  if [[ -d "$CONFIG_DIR" ]] || [[ -w "${HOME}/.config" ]] || [[ -w "$HOME" ]]; then
+    note "preflight: ok writable config dir"
+  else
+    note "preflight: FAIL cannot create $CONFIG_DIR"
+    failures=$((failures + 1))
+  fi
+
+  [[ "$failures" -eq 0 ]]
+}
+
+verify_installation() {
+  local dest="$INSTALL_BINDIR/cotp"
+  check_home
+  [[ -f "$CONFIG_FILE" ]] || die "verify FAIL: missing $CONFIG_FILE"
+  [[ -x "$dest" ]] || die "verify FAIL: missing or not executable: $dest"
+  [[ -x "$VENV_PYTHON" ]] || die "verify FAIL: missing venv python: $VENV_PYTHON"
+  "$VENV_PYTHON" -c "import cotp_cli" || die "verify FAIL: cotp_cli not importable in venv"
+  verify_pyzbar "$VENV_PYTHON"
+  "$dest" --help >/dev/null 2>&1 || die "verify FAIL: $dest --help failed"
+  note "verify OK:"
+  note "  cotp:   $dest"
+  note "  config: $CONFIG_FILE"
+  note "  venv:   $VENV_DIR"
+}
+
+install_failed_hint() {
+  local rc="${1:-1}"
+  echo "" >&2
+  echo "cotp install: === install FAILED (exit $rc) ===" >&2
+  echo "cotp install:   $INSTALL_BINDIR/cotp — $([[ -x "${INSTALL_BINDIR}/cotp" ]] && echo OK || echo MISSING)" >&2
+  echo "cotp install:   $CONFIG_FILE — $([[ -f "$CONFIG_FILE" ]] && echo OK || echo MISSING)" >&2
+  echo "cotp install:   $VENV_PYTHON — $([[ -x "$VENV_PYTHON" ]] && echo OK || echo MISSING)" >&2
+  if [[ -x "$VENV_PYTHON" ]] && "$VENV_PYTHON" -c "import cotp_cli" 2>/dev/null; then
+    echo "cotp install: venv OK — retry: ./install.sh --bin-only" >&2
+  else
+    echo "cotp install: macOS: brew install zbar git python@3.12 && ./install.sh" >&2
+  fi
 }
 
 remove_old_venvs() {
@@ -127,43 +245,43 @@ create_venv() {
   local system_py="$1"
   remove_old_venvs
   mkdir -p "${HOME}/.cotp"
-  note "creating venv at $VENV_DIR (fresh; --copies)..."
+  note "creating venv at $VENV_DIR ..."
   "$system_py" -m venv --copies "$VENV_DIR" || die "python -m venv failed"
   if ! "$VENV_PYTHON" -c 'import sys; print(sys.version_info[:2])' >/dev/null 2>&1; then
     rm -rf "$VENV_DIR"
-    die "venv python is broken (File name too long?). Remove ~/.cotp and ~/.local/share/cotp, then re-run."
+    die "venv broken — rm -rf ~/.cotp ~/.local/share/cotp and re-run ./install.sh"
   fi
 }
 
-stage_source_in_tmp() {
-  local stage
-  stage="$(mktemp -d /tmp/cotp-src.XXXXXX)"
-  cp "$ROOT/pyproject.toml" "$stage/"
-  cp -R "$ROOT/cotp_cli" "$stage/"
-  [[ -f "$ROOT/README.md" ]] && cp "$ROOT/README.md" "$stage/"
-  [[ -f "$ROOT/LICENSE" ]] && cp "$ROOT/LICENSE" "$stage/"
-  echo "$stage"
+pip_install_with_retry() {
+  local attempt
+  for attempt in 1 2 3; do
+    if "$@"; then
+      return 0
+    fi
+    note "pip attempt $attempt failed; retrying..."
+    sleep 2
+  done
+  return 1
 }
 
 pip_install_package() {
   local system_py="$1"
-  local stage
   export TMPDIR="${TMPDIR:-/tmp}"
   mkdir -p "$TMPDIR"
   create_venv "$system_py"
-  note "installing into $VENV_DIR (system Python site-packages untouched)..."
+  note "upgrading pip in venv..."
   "$VENV_PYTHON" -m pip install --upgrade pip wheel >/dev/null 2>&1 || true
 
-  if [[ "${COTP_INSTALL_LOCAL:-0}" == 1 ]] && [[ -f "$ROOT/pyproject.toml" ]]; then
-    stage="$(stage_source_in_tmp)"
-    note "local build from $stage ..."
-    "$VENV_PYTHON" -m pip install --upgrade "$stage" || die "local pip install failed"
-    rm -rf "$stage"
+  if use_local_source; then
+    note "installing from local tree: $ROOT"
+    pip_install_with_retry "$VENV_PYTHON" -m pip install --upgrade "$ROOT" >&2 \
+      || die "pip install from $ROOT failed"
   else
-    note "installing from GitHub (main branch)..."
-    "$VENV_PYTHON" -m pip install --upgrade "$GITHUB_PKG" || die "pip install from GitHub failed"
+    note "installing from GitHub (main)..."
+    pip_install_with_retry "$VENV_PYTHON" -m pip install --upgrade "$GITHUB_PKG" >&2 \
+      || die "pip install from GitHub failed (offline? copy this repo folder and re-run ./install.sh)"
   fi
-  echo "$VENV_PYTHON"
 }
 
 ensure_config_yaml() {
@@ -193,10 +311,12 @@ set -euo pipefail
 export COTP_CONFIG="\${COTP_CONFIG:-${CONFIG_FILE}}"
 exec "\${HOME}/.cotp/venv/bin/python" -m cotp_cli "\$@"
 EOF
-  if [[ -w "$(dirname "$dest")" ]]; then
+  if [[ -w "$(dirname "$dest")" ]] 2>/dev/null || [[ ! -e "$(dirname "$dest")" ]]; then
+    mkdir -p "$(dirname "$dest")"
     install -m 755 "$tmp" "$dest"
   else
-    note "need permission to write $(dirname "$dest")"
+    note "need sudo to write $(dirname "$dest")"
+    sudo mkdir -p "$(dirname "$dest")"
     sudo install -m 755 "$tmp" "$dest"
   fi
   rm -f "$tmp"
@@ -204,14 +324,14 @@ EOF
 
 ensure_bindir() {
   local dir="$1"
-  if [[ -d "$dir" ]]; then
-    return 0
-  fi
-  if [[ -w "$(dirname "$dir")" ]]; then
+  [[ -d "$dir" ]] && return 0
+  local parent
+  parent="$(dirname "$dir")"
+  if [[ -w "$parent" ]] 2>/dev/null || [[ ! -e "$parent" ]]; then
     mkdir -p "$dir"
     return 0
   fi
-  note "creating $dir (sudo)"
+  note "creating $dir with sudo"
   sudo mkdir -p "$dir"
 }
 
@@ -221,15 +341,15 @@ path_hint() {
     *:"$dir":*) return 0 ;;
   esac
   echo "" >&2
-  echo "cotp install: add $dir to PATH, for example:" >&2
-  echo '  echo export PATH="$HOME/bin:$PATH" >> ~/.zshrc' >&2
+  note "add $dir to PATH, e.g.:"
+  echo '  echo '\''export PATH="$HOME/bin:$PATH"'\'' >> ~/.zshrc && source ~/.zshrc' >&2
 }
 
 should_cleanup() {
   [[ "$NO_CLEANUP" -eq 1 ]] && return 1
   [[ "$FORCE_CLEANUP" -eq 1 ]] && return 0
   if [[ -d "$ROOT/.git" ]]; then
-    note "git checkout detected; keeping files here (use --cleanup to remove install tree)"
+    note "git checkout detected; keeping files (use --cleanup to remove tree)"
     return 1
   fi
   return 0
@@ -247,59 +367,41 @@ cleanup_install_tree() {
     return 0
   fi
   local item name
-  note "removing install files under $ROOT (cotp is already in $INSTALL_BINDIR/cotp)"
+  note "removing install files under $ROOT"
   for item in "$ROOT"/* "$ROOT"/.[!.]* "$ROOT"/..?*; do
     [[ -e "$item" ]] || continue
     name="$(basename "$item")"
     [[ "$name" == "." || "$name" == ".." ]] && continue
     if cleanup_skip_name "$name"; then
-      note "skipping $name (remove manually if needed: rm -rf $(printf '%q' "$item"))"
       continue
     fi
-    rm -rf "$item" 2>/dev/null || note "warning: could not remove $name (delete manually)"
+    rm -rf "$item" 2>/dev/null || note "warning: could not remove $name"
   done
   rm -f "$ROOT/install.sh" 2>/dev/null || true
-  note "done. on this machine you only need:"
-  note "  $INSTALL_BINDIR/cotp"
-  note "  $CONFIG_FILE"
-  note "  $VENV_DIR"
-  note "delete this empty folder if it remains: rmdir $ROOT 2>/dev/null || true"
 }
 
 install_wrapper_only() {
+  check_home
   local dest="$INSTALL_BINDIR/cotp"
-  note "HOME=$HOME"
-  note "INSTALL_BINDIR=$INSTALL_BINDIR"
-  if [[ ! -x "$VENV_PYTHON" ]]; then
-    die "venv missing at $VENV_DIR — run full ./install.sh first"
-  fi
-  "$VENV_PYTHON" -c "import cotp_cli" || die "cotp_cli not in venv — run full ./install.sh first"
+  [[ -x "$VENV_PYTHON" ]] || die "venv missing at $VENV_DIR — run ./install.sh"
+  "$VENV_PYTHON" -c "import cotp_cli" || die "cotp_cli missing in venv — run ./install.sh"
   ensure_config_yaml
   ensure_bindir "$INSTALL_BINDIR"
   write_cotp_wrapper "$dest"
-  [[ -x "$dest" ]] || die "cotp was not created at $dest"
-  "$dest" --help >/dev/null 2>&1 || die "cotp at $dest failed smoke test (--help)"
-  note "install complete (wrapper only):"
-  note "  cotp command:  $dest"
-  note "  (venv also has: $VENV_DIR/bin/cotp — use ~/bin/cotp for default config)"
-  ls -la "$dest" >&2
+  verify_installation
   path_hint "$INSTALL_BINDIR"
 }
 
 parse_args() {
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --no-cleanup)
-        NO_CLEANUP=1
-        ;;
-      --cleanup)
-        FORCE_CLEANUP=1
-        ;;
-      --bin-only)
-        BIN_ONLY=1
-        ;;
+      --no-cleanup) NO_CLEANUP=1 ;;
+      --cleanup) FORCE_CLEANUP=1 ;;
+      --bin-only) BIN_ONLY=1 ;;
+      --preflight) PREFLIGHT_ONLY=1 ;;
+      --verify) VERIFY_ONLY=1 ;;
       -h | --help)
-        sed -n '2,18p' "$0"
+        sed -n '2,20p' "$0"
         exit 0
         ;;
       *)
@@ -311,57 +413,57 @@ parse_args() {
 }
 
 main() {
-  local system_py venv_py dest
-  trap 'install_failed_hint $?' ERR
+  local system_py venv_py
   parse_args "$@"
-  if [[ "$BIN_ONLY" -eq 1 ]]; then
-    install_wrapper_only
-    INSTALL_SUCCEEDED=1
-    trap - ERR
-    return 0
-  fi
-  note "HOME=$HOME"
-  note "INSTALL_BINDIR=$INSTALL_BINDIR"
-  note "CONFIG_FILE=$CONFIG_FILE"
+  check_home
 
-  note "step 1/5 — Python 3.11+"
+  if [[ "$VERIFY_ONLY" -eq 1 ]]; then
+    verify_installation
+    note "=== cotp is installed correctly on this machine ==="
+    exit 0
+  fi
+
+  if [[ "$PREFLIGHT_ONLY" -eq 1 ]]; then
+  preflight_checks || die "preflight failed (see messages above)"
+    note "=== preflight OK — run ./install.sh ==="
+    exit 0
+  fi
+
+  if [[ "$BIN_ONLY" -eq 1 ]]; then
+    trap 'install_failed_hint $?' ERR
+    install_wrapper_only
+    trap - ERR
+    note "=== cotp is installed correctly on this machine ==="
+    exit 0
+  fi
+
+  trap 'install_failed_hint $?' ERR
+
+  note "=== cotp install start ==="
+  note "HOME=$HOME  INSTALL_BINDIR=$INSTALL_BINDIR"
+
+  preflight_checks || die "preflight failed — fix items above, or run: ./install.sh --preflight"
+
+  ensure_config_yaml
+  ensure_bindir "$INSTALL_BINDIR"
+
   system_py="$(python_bin)"
   check_python_version "$system_py"
-  ensure_config_yaml
-
-  note "step 2/5 — system zbar (pyzbar)"
-  note "  macOS:  brew install zbar"
-  note "          brew install python@3.12   # if python3 < 3.11"
-  note "  Linux:  sudo apt install libzbar0"
   check_zbar_system
 
-  note "step 3/5 — venv + pip install cotp-cli from GitHub"
-  venv_py="$(pip_install_package "$system_py")"
-  if [[ ! -x "$venv_py" ]]; then
-    die "venv python missing: $venv_py"
-  fi
-  "$venv_py" -c "import cotp_cli" || die "cotp_cli import failed after pip install"
+  pip_install_package "$system_py"
+  [[ -x "$VENV_PYTHON" ]] || die "venv python missing: $VENV_PYTHON"
+  "$VENV_PYTHON" -c "import cotp_cli" || die "cotp_cli import failed"
+  verify_pyzbar "$VENV_PYTHON"
 
-  note "step 4/5 — verify pyzbar can load zbar"
-  verify_pyzbar "$venv_py"
-
-  note "step 5/5 — install ~/bin/cotp wrapper"
-  ensure_bindir "$INSTALL_BINDIR"
-  dest="$INSTALL_BINDIR/cotp"
-  write_cotp_wrapper "$dest"
-  [[ -x "$dest" ]] || die "cotp was not created at $dest"
-  "$dest" --help >/dev/null 2>&1 || die "cotp at $dest failed smoke test (--help)"
-
-  note "install complete:"
-  note "  cotp command:  $dest"
-  note "  venv:          $VENV_DIR"
-  note "  config:        $CONFIG_FILE"
-  ls -la "$dest" >&2
+  write_cotp_wrapper "$INSTALL_BINDIR/cotp"
+  verify_installation
   path_hint "$INSTALL_BINDIR"
-  note "copy qr-vault.yaml to the vault_path in $CONFIG_FILE if needed"
-  INSTALL_SUCCEEDED=1
+  note "copy qr-vault.yaml to vault_path in $CONFIG_FILE if needed"
+
   trap - ERR
   cleanup_install_tree
+  note "=== cotp is installed correctly on this machine ==="
 }
 
 main "$@"

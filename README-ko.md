@@ -89,21 +89,20 @@ python3 --version   # 3.11 이상
 ```bash
 git clone https://github.com/ytensor42/qr-vault-cli.git
 cd qr-vault-cli
-./install.sh
+./install.sh --preflight    # 선택: 실패 원인만 먼저 확인
+./install.sh --no-cleanup   # git clone이면 소스 유지
+./install.sh --verify       # 설치 후 검증
 ```
+
+**성공 시 마지막 줄:** `cotp install: === cotp is installed correctly on this machine ===`
 
 요약:
 
-1. **`~/.cotp/venv`** 생성 후 **GitHub `main`** 에서 `cotp-cli` 설치.
-2. **`~/.config/cotp/config.yaml`** 없으면 생성.
-3. **`~/bin/cotp`** 설치.
-4. 끝나면 clone 폴더 삭제 안내(스크립트 출력 참고).
+1. 사전 검사 후 **`~/.config/cotp/config.yaml`** 생성.
+2. **`~/.cotp/venv`** + `cotp-cli` (폴더에 `pyproject.toml` 있으면 **로컬 빌드**, 없으면 GitHub).
+3. **`~/bin/cotp`** 설치 후 자동 검증.
 
-**이 Mac 작업 트리 그대로** (아직 push 안 한 코드):
-
-```bash
-COTP_INSTALL_LOCAL=1 ./install.sh
-```
+**다른 Mac:** 이 저장소 폴더를 통째로 복사한 뒤 그 안에서 `./install.sh` 만 실행해도 됩니다 (GitHub 불필요).
 
 **`File name too long`:** `rm -rf ~/.cotp ~/.local/share/cotp` 후 `./install.sh` 재실행.
 
@@ -148,7 +147,7 @@ mkdir -p ~/bin
 # 또는: export PATH="$HOME/.cotp/venv/bin:$PATH"  (config는 COTP_CONFIG=~/.config/cotp/config.yaml)
 ```
 
-**`~/bin/cotp`가 없을 때:** 설치가 중간에 실패한 것입니다. 터미널에 `cotp install: install complete:` 와 `cotp command: /Users/…/bin/cotp` 가 보였는지 확인하세요. `echo $HOME` 이 비어 있으면 안 됩니다. 재시도:
+**`~/bin/cotp`가 없을 때:** 설치가 끝나지 않은 것입니다. `./install.sh --verify` 로 상태 확인. 성공 메시지가 없으면 `./install.sh --preflight` 출력을 보고 `brew install zbar git python@3.12` 후 재시도:
 
 ```bash
 rm -rf ~/.cotp ~/.local/share/cotp
