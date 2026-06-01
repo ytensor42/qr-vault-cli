@@ -34,9 +34,32 @@ OLD_VENV_DIRS=(
   "${HOME}/.cotp/venv"
 )
 
+INSTALL_SUCCEEDED=0
+
 die() {
   echo "cotp install: error: $*" >&2
   exit 1
+}
+
+install_failed_hint() {
+  local rc="${1:-1}"
+  echo "cotp install: failed (exit $rc) before completion." >&2
+  if [[ -x "${INSTALL_BINDIR}/cotp" ]]; then
+    echo "cotp install:   ${INSTALL_BINDIR}/cotp — present" >&2
+  else
+    echo "cotp install:   ${INSTALL_BINDIR}/cotp — missing (wrapper is written only after venv + pyzbar checks)" >&2
+  fi
+  if [[ -f "$CONFIG_FILE" ]]; then
+    echo "cotp install:   $CONFIG_FILE — present" >&2
+  else
+    echo "cotp install:   $CONFIG_FILE — missing" >&2
+  fi
+  if [[ -x "$VENV_PYTHON" ]] && "$VENV_PYTHON" -c "import cotp_cli" 2>/dev/null; then
+    echo "cotp install: retry wrapper only:  ./install.sh --bin-only" >&2
+  else
+    echo "cotp install: fix the error above, then re-run:  ./install.sh" >&2
+    echo "cotp install: prerequisites (macOS):  brew install zbar git python@3.12" >&2
+  fi
 }
 
 note() {
@@ -245,9 +268,12 @@ cleanup_install_tree() {
 
 install_wrapper_only() {
   local dest="$INSTALL_BINDIR/cotp"
+  note "HOME=$HOME"
+  note "INSTALL_BINDIR=$INSTALL_BINDIR"
   if [[ ! -x "$VENV_PYTHON" ]]; then
     die "venv missing at $VENV_DIR — run full ./install.sh first"
   fi
+  "$VENV_PYTHON" -c "import cotp_cli" || die "cotp_cli not in venv — run full ./install.sh first"
   ensure_config_yaml
   ensure_bindir "$INSTALL_BINDIR"
   write_cotp_wrapper "$dest"
@@ -286,30 +312,40 @@ parse_args() {
 
 main() {
   local system_py venv_py dest
+  trap 'install_failed_hint $?' ERR
   parse_args "$@"
   if [[ "$BIN_ONLY" -eq 1 ]]; then
     install_wrapper_only
+    INSTALL_SUCCEEDED=1
+    trap - ERR
     return 0
   fi
+  note "HOME=$HOME"
+  note "INSTALL_BINDIR=$INSTALL_BINDIR"
+  note "CONFIG_FILE=$CONFIG_FILE"
+
+  note "step 1/5 — Python 3.11+"
   system_py="$(python_bin)"
   check_python_version "$system_py"
+  ensure_config_yaml
 
-  note "step 1 — prerequisites (run these first if missing):"
+  note "step 2/5 — system zbar (pyzbar)"
   note "  macOS:  brew install zbar"
   note "          brew install python@3.12   # if python3 < 3.11"
   note "  Linux:  sudo apt install libzbar0"
-
   check_zbar_system
+
+  note "step 3/5 — venv + pip install cotp-cli from GitHub"
   venv_py="$(pip_install_package "$system_py")"
   if [[ ! -x "$venv_py" ]]; then
     die "venv python missing: $venv_py"
   fi
   "$venv_py" -c "import cotp_cli" || die "cotp_cli import failed after pip install"
+
+  note "step 4/5 — verify pyzbar can load zbar"
   verify_pyzbar "$venv_py"
 
-  ensure_config_yaml
-  note "HOME=$HOME"
-  note "INSTALL_BINDIR=$INSTALL_BINDIR"
+  note "step 5/5 — install ~/bin/cotp wrapper"
   ensure_bindir "$INSTALL_BINDIR"
   dest="$INSTALL_BINDIR/cotp"
   write_cotp_wrapper "$dest"
@@ -323,6 +359,8 @@ main() {
   ls -la "$dest" >&2
   path_hint "$INSTALL_BINDIR"
   note "copy qr-vault.yaml to the vault_path in $CONFIG_FILE if needed"
+  INSTALL_SUCCEEDED=1
+  trap - ERR
   cleanup_install_tree
 }
 
