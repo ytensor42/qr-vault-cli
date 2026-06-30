@@ -35,7 +35,7 @@ After install, run **`cotp`** (or `python -m cotp_cli` inside the install venv).
 
 ### `cotp put` — read QR, print seed, update the vault
 
-Vault **`labels`** store only the labels you provide (the **cluster key** and **username** are **not** added as labels); extra labels can also come from a `QR-<key>-<user>-<label>…` filename when present. **Updates** only when exactly **one** existing entry matches the same key, username, and label set (no overwrite on mismatch or ambiguity).
+Vault **`labels`** store only the labels you pass with **`-l` / `--labels`** (the **cluster key** and **username** are **not** added as labels; PNG filename suffixes are not used as labels). **Updates** only when exactly **one** existing entry matches the same key, username, and label set (no overwrite on mismatch or ambiguity).
 
 ```bash
 cotp put

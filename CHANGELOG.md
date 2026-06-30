@@ -11,10 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `get -u/--user USERNAME`: match a username across all keys (no KEY required) and print every matching entry. Cannot be combined with the positional username; `cotp -u …` is treated as an implicit `get`.
 - `get` wildcard search: the KEY, username (positional or `-u`), and `-l` labels accept `*` (any run of characters; other characters literal and case-sensitive). Applies to `get` only — `put` still matches/writes literally.
+- `cotp -v` / `cotp --version`: print the installed package version.
 
 ### Changed
 
-- Vault `labels` no longer include the cluster key or username automatically; only the labels you pass (`-l`/`--labels` or a `QR-<key>-<user>-<label>…` filename) are stored. `get` label matching (`-l`) likewise compares only those labels.
+- Vault `labels` no longer include the cluster key or username automatically; only the labels you pass with `-l`/`--labels` are stored. `get` label matching (`-l`) likewise compares only those labels.
+- `put -f`: PNG filename suffixes after `QR-<key>-<user>-` are no longer stored as labels (key/username from filename when omitted on the CLI is unchanged).
 
 ### Added
 

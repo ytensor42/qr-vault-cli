@@ -103,10 +103,10 @@
 - **`-f` 없음:** `run_put_metadata_only` — PNG·폴더 스캔 없음. **KEY+username 필수**. vault는 `default_vault_path()`. **key+username** 으로 1건 찾아 **labels/password** 만 갱신, **seed 유지**. 신규 키면 seed `""` 로 생성(QR 없는 항목).
 - vault 갱신 대상: 설정에 **`vault_path`** 가 있으면 **그 파일**에 merge; 없으면 **`~/.config/cotp/qr-vault.yaml`** (config 기본). **`get`** 도 동일.
 - **vault 스키마 (enhance):** top-level key 아래 **항상 list of entries** (`qr-vault-enhance.yaml` 형식). legacy dict 1건은 읽기·쓰기 시 list로 promote. 같은 key에 **새 username** → list에 **append**; 같은 username + 다른 labels → **거부** (metadata-only `put`은 username만으로 갱신).
-- **`labels`**: `labels_for_vault_entry` — **key·username 은 라벨로 저장하지 않음**. PNG 파일명 `QR-…` 파싱 분 + **`put -l` / `--labels`** (콤마 구분) 라벨만(중복 제거). 라벨 없으면 빈 리스트.
+- **`labels`**: `labels_for_vault_entry` — **key·username 은 라벨로 저장하지 않음**. **`put -l` / `--labels`** (콤마 구분)만 저장(중복 제거). PNG 파일명 접미사는 라벨로 쓰지 않음. 라벨 없으면 빈 리스트.
 - **업데이트 조건** (`merge_qr_vault_yaml`): vault 키 **`<key>`** 아래에서 **username·labels(집합)** 이 모두 일치하는 엔트리가 **정확히 1개**일 때만 seed/password 갱신. 0개면 키가 비어 있을 때만 신규 생성; 키는 있는데 일치 항목 없으면 덮어쓰지 않고 **`VaultUpdateError`** + stderr **hints**(같은 key / username 일치 / labels 겹침 등 관련 엔트리 목록). 2개 이상 exact match도 hints로 전부 표시.
 - **`cotp put <key> <username> [-l …] [-f png]`** — **`-f` 생략** = 메타데이터만(기존 seed 유지). implicit put: **`<key> <username>`** + **`-f` 또는 `-p`**.
-- 파일명 패턴·KEY/username 없이 `put -f` 만 쓰면: 파일명이 `QR-<cluster>-<user>-<labels...>.png` 가 아니면 vault 스킵(경고).
+- 파일명 패턴·KEY/username 없이 `put -f` 만 쓰면: 파일명이 `QR-<cluster>-<username>[...].png` 가 아니면 vault 스킵(경고). 접미사는 key/username 추출에만 쓰이고 labels에는 넣지 않음.
 
 ### `get`
 

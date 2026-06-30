@@ -697,11 +697,46 @@ def test_otpauth_secret_missing_secret() -> None:
 
 
 def test_parse_qr_filename() -> None:
-    assert parse_qr_filename(Path("QR-tp00-admin-work.png")) == ("tp00", "admin", ["work"])
-    assert parse_qr_filename(Path("QR-tp00-admin.PNG")) == ("tp00", "admin", [])
+    assert parse_qr_filename(Path("QR-tp00-admin-work.png")) == ("tp00", "admin")
+    assert parse_qr_filename(Path("QR-tp00-admin-20260630.png")) == ("tp00", "admin")
+    assert parse_qr_filename(Path("QR-tp00-admin.PNG")) == ("tp00", "admin")
     assert parse_qr_filename(Path("QR-only.png")) is None
     assert parse_qr_filename(Path("not-qr.png")) is None
     assert parse_qr_filename(Path("QR-.png")) is None
+
+
+def test_run_save_from_png_ignores_filename_suffix_for_labels(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import yaml  # noqa: PLC0415
+
+    import cotp_cli.main as vm
+
+    png = tmp_path / "QR-tc02-admin-20260630.png"
+    png.write_bytes(b"x")
+    vault = tmp_path / "qr-vault.yaml"
+    vault.write_text(
+        yaml.safe_dump(
+            {
+                "tc02": {
+                    "username": "admin",
+                    "seed": "",
+                    "password": "old",
+                    "labels": None,
+                },
+            },
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(vm, "extract_seeds_from_png", lambda _p: ["SEEDQR"])
+    monkeypatch.setattr(vm, "vault_path_for_put", lambda _p: vault)
+
+    run_save_from_png(png, None, cluster="tc02", username="admin")
+
+    data = yaml.safe_load(vault.read_text(encoding="utf-8"))
+    assert data["tc02"][0]["seed"] == "SEEDQR"
+    assert data["tc02"][0]["labels"] == []
 
 
 def test_merge_qr_vault_yaml_create_merge_update(tmp_path: Path) -> None:

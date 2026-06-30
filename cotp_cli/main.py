@@ -16,6 +16,7 @@ from urllib.parse import parse_qs, urlparse
 import yaml
 from PIL import Image
 
+from cotp_cli import __version__
 from cotp_cli.config import load_cotp_settings, vault_path_for_put
 
 _RANDOM_PASSWORD_LENGTH = 12
@@ -157,8 +158,11 @@ def extract_seeds_from_png(path: Path) -> list[str]:
     return out
 
 
-def parse_qr_filename(path: Path) -> tuple[str, str, list[str]] | None:
-    """Parse ``QR-<cluster>-<username>-<label1>-....png`` → (cluster, username, [labels...])."""
+def parse_qr_filename(path: Path) -> tuple[str, str] | None:
+    """Parse ``QR-<cluster>-<username>[-<ignored>...].png`` → (cluster, username).
+
+    Extra ``-`` segments after username are ignored (not stored as vault labels).
+    """
     if path.suffix.lower() != ".png":
         return None
     stem = path.stem
@@ -170,7 +174,7 @@ def parse_qr_filename(path: Path) -> tuple[str, str, list[str]] | None:
     parts = body.split("-")
     if len(parts) < 2 or any(p == "" for p in parts):
         return None
-    return parts[0], parts[1], list(parts[2:])
+    return parts[0], parts[1]
 
 
 def _looks_like_vault_entry(value: object) -> bool:
@@ -1048,7 +1052,6 @@ def run_save_from_png(
         print(s)
 
     parsed = parse_qr_filename(png_path)
-    filename_extra: list[str] = list(parsed[2]) if parsed is not None else []
 
     if cluster is not None and username is not None:
         cluster_name = cluster.strip()
@@ -1057,17 +1060,17 @@ def run_save_from_png(
             print("error: cluster (key) and username must be non-empty", file=sys.stderr)
             sys.exit(1)
     elif parsed is not None:
-        cluster_name, username_val, filename_extra = parsed
+        cluster_name, username_val = parsed
     else:
         print(
-            "warning: filename is not QR-<cluster>-<username>-<label1>-...-<labeln>.png; "
+            "warning: filename is not QR-<cluster>-<username>[...].png; "
             "skipping qr-vault.yaml (use: cotp put <key> <username> [-l labels] [-f png]).",
             file=sys.stderr,
         )
         return
 
     cli_extra = labels_from_csv(labels_csv) if labels_csv is not None else []
-    vault_labels = labels_for_vault_entry([*filename_extra, *cli_extra])
+    vault_labels = labels_for_vault_entry(cli_extra)
     seed_for_vault = seeds[0]
     if len(seeds) > 1:
         print(
@@ -1168,6 +1171,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="cotp",
         description="cotp: put (vault from QR), get (TOTP from vault), read (seed from QR), random (password).",
+    )
+    parser.add_argument(
+        "-v",
+        "--version",
+        action="version",
+        version=f"%(prog)s {__version__}",
     )
     sub = parser.add_subparsers(dest="command", required=False)
 

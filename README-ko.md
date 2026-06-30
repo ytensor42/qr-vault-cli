@@ -35,7 +35,7 @@
 
 ### `cotp put` — QR → 시드 출력 + vault 갱신
 
-vault **`labels`** 에는 **키·username 을 저장하지 않고**, 사용자가 준 라벨만 들어갑니다(파일명 `QR-<key>-<user>-<label>…` 의 추가 라벨 포함). **key·username·labels** 가 vault와 **정확히 1건** 일치할 때만 업데이트합니다.
+vault **`labels`** 에는 **키·username 을 저장하지 않고**, **`-l` / `--labels`로 준 라벨만** 들어갑니다(PNG 파일명 접미사는 라벨로 쓰지 않음). **key·username·labels** 가 vault와 **정확히 1건** 일치할 때만 업데이트합니다.
 
 ```bash
 cotp put
