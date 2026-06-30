@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `get -u/--user USERNAME`: match a username across all keys (no KEY required) and print every matching entry. Cannot be combined with the positional username; `cotp -u …` is treated as an implicit `get`.
+- `get` wildcard search: the KEY, username (positional or `-u`), and `-l` labels accept `*` (any run of characters; other characters literal and case-sensitive). Applies to `get` only — `put` still matches/writes literally.
+
+### Changed
+
+- Vault `labels` no longer include the cluster key or username automatically; only the labels you pass (`-l`/`--labels` or a `QR-<key>-<user>-<label>…` filename) are stored. `get` label matching (`-l`) likewise compares only those labels.
+
+### Added
+
 - Open source repository layout (`LICENSE`, `CONTRIBUTING`, `SECURITY`, `CODE_OF_CONDUCT`, GitHub Actions CI, issue templates).
 
 ## [0.6.9] — 2026-05-15

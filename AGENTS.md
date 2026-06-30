@@ -25,7 +25,7 @@
 
 | 요구 | 동작 |
 |------|------|
-| 저장 시 **`labels`에 key·username 항상 포함** | `labels_for_vault_entry(cluster, username, extra)` |
+| 저장 시 **`labels`에 key·username 미포함** (사용자가 준 라벨만) | `labels_for_vault_entry(extra)` |
 | 추가 라벨은 **위치 인자가 아니라 `-l` / `--labels`** (콤마 구분) | `put … -l test,prod` |
 | **`-p`만** (값 없음) → **대화형** 입력 2회·검증 후 **Base64 저장**; `Ctrl+C` → 종료(130) | `read_password_interactive_b64` |
 | **`-p <값>`** → 그 문자열을 vault에 그대로 저장(기존처럼 Base64 문자열 권장) | |
@@ -42,13 +42,15 @@
 | **`-l` 없음** + KEY → 해당 키 1건; KEY+username → username 일치 | `label_mode=none` |
 | **`-l` + KEY+username** → vault labels와 **집합 정확 일치** | `label_mode=exact` |
 | **`-l`만** 또는 KEY+`-l`(username 생략) → vault labels가 **쿼리 라벨 전부 포함**(부분 집합) | `label_mode=subset` |
-| KEY+username 주고 **`-l`에 추가만** 줄 때도 조회용 labels에 **key·username 포함** | `query_labels_for_get` |
+| 조회용 labels는 **`-l` 값만** (key·username 미포함) | `query_labels_for_get` |
+| **`-u` / `--user`** → KEY 없이 vault 전체에서 username 일치하는 **모든 엔트리** 출력. positional username과 동시 사용 불가 | `find_get_matches_for_query(cluster=None, username=…)` |
+| **와일드카드 `*`** → `get` 의 KEY·username·`-l` 라벨 검색에서 `*` = 임의 문자열(셸에서 따옴표 필요). `*` 없으면 기존처럼 정확 일치. **put 쓰기 매칭에는 미적용**(문자 그대로) | `wildcard_match` |
 | **`-t`** → TOTP만 클립보드, **password 복사 생략** | `totp_to_clipboard` |
 | **인자 없음** → 도움말 (`cotp` = `cotp -h`) | `argv_for_dispatch` |
-| 암시적 get: 서브커맨드 생략, **`-l` / `-t`로 시작**해도 get | `argv_for_dispatch` |
+| 암시적 get: 서브커맨드 생략, **`-l` / `-u` / `-t`로 시작**해도 get | `argv_for_dispatch` |
 | **매칭 0건** → `no matched data` | |
 | **매칭 1건** → stdout **한 줄** `HH:MM:SS key/username [otp] [labels]` | `format_get_output_line`; **`-w`** 이면 여러 줄 정렬 (`format_get_output`) |
-| **매칭 2건 이상** → **엔트리당 한 줄** (동일 한 줄 형식) | 예: `22:39:11 tp00/admin 079724 tp00,admin,test` |
+| **매칭 2건 이상** → **엔트리당 한 줄** (동일 한 줄 형식) | 예: `22:39:11 tp00/admin 079724 test` |
 | **클립보드·stderr 복사 안내**는 **1건일 때만**; 다중 매칭 시 stdout만 | |
 
 ### 그 외
@@ -93,7 +95,7 @@
 
 ### 서브커맨드 생략 → 암시적 `get`
 
-- `argv_for_dispatch` (`main.py`): 인자 없음 → **`-h`**. **`<key> <username>`** 뒤에 **`-f` / `-p`** 가 있으면 implicit **`put`**. 그 외 positional → implicit **`get`**. **`-l` / `-t`로 시작**하면 앞에 `get` 삽입. **`-l` 단독은 put이 아님.**
+- `argv_for_dispatch` (`main.py`): 인자 없음 → **`-h`**. **`<key> <username>`** 뒤에 **`-f` / `-p`** 가 있으면 implicit **`put`**. 그 외 positional → implicit **`get`**. **`-l` / `-u` / `-t` / `-w`로 시작**하면 앞에 `get` 삽입. **`-l` 단독은 put이 아님.**
 
 ### `put`
 
@@ -101,7 +103,7 @@
 - **`-f` 없음:** `run_put_metadata_only` — PNG·폴더 스캔 없음. **KEY+username 필수**. vault는 `default_vault_path()`. **key+username** 으로 1건 찾아 **labels/password** 만 갱신, **seed 유지**. 신규 키면 seed `""` 로 생성(QR 없는 항목).
 - vault 갱신 대상: 설정에 **`vault_path`** 가 있으면 **그 파일**에 merge; 없으면 **`~/.config/cotp/qr-vault.yaml`** (config 기본). **`get`** 도 동일.
 - **vault 스키마 (enhance):** top-level key 아래 **항상 list of entries** (`qr-vault-enhance.yaml` 형식). legacy dict 1건은 읽기·쓰기 시 list로 promote. 같은 key에 **새 username** → list에 **append**; 같은 username + 다른 labels → **거부** (metadata-only `put`은 username만으로 갱신).
-- **`labels`**: `labels_for_vault_entry` — **cluster(key)·username** 을 항상 포함, PNG 파일명 `QR-…` 파싱 분 + **`put -l` / `--labels`** (콤마 구분) 추가 라벨(중복 제거).
+- **`labels`**: `labels_for_vault_entry` — **key·username 은 라벨로 저장하지 않음**. PNG 파일명 `QR-…` 파싱 분 + **`put -l` / `--labels`** (콤마 구분) 라벨만(중복 제거). 라벨 없으면 빈 리스트.
 - **업데이트 조건** (`merge_qr_vault_yaml`): vault 키 **`<key>`** 아래에서 **username·labels(집합)** 이 모두 일치하는 엔트리가 **정확히 1개**일 때만 seed/password 갱신. 0개면 키가 비어 있을 때만 신규 생성; 키는 있는데 일치 항목 없으면 덮어쓰지 않고 **`VaultUpdateError`** + stderr **hints**(같은 key / username 일치 / labels 겹침 등 관련 엔트리 목록). 2개 이상 exact match도 hints로 전부 표시.
 - **`cotp put <key> <username> [-l …] [-f png]`** — **`-f` 생략** = 메타데이터만(기존 seed 유지). implicit put: **`<key> <username>`** + **`-f` 또는 `-p`**.
 - 파일명 패턴·KEY/username 없이 `put -f` 만 쓰면: 파일명이 `QR-<cluster>-<user>-<labels...>.png` 가 아니면 vault 스킵(경고).
@@ -109,6 +111,9 @@
 ### `get`
 
 - **labels 매칭 (`find_get_matches`):** **`-l` 없음** + KEY → 해당 키 1건; **`-l` 없음** + KEY+username → username 일치. **`-l` 있음** + KEY+username → labels **집합 정확히 일치**; **`-l`만**(또는 KEY+`-l`, username 생략) → vault labels가 **`-l` 값 전부 포함**(부분 집합). **0건** → `no matched data`.
+- **`-u` / `--user`** (`find_get_matches_for_query`): KEY 없이 **vault 전체**에서 username 이 일치하는 **모든 엔트리**를 출력(`label_mode=none`, cluster=None). `-l` 와 함께면 labels 부분집합도 적용. positional username 과 **동시 사용 시 에러**(`parser.error`). dispatch 는 `-u`/`--user` 로 시작해도 get.
+- **와일드카드 `*`** (`wildcard_match`): `get` 의 KEY·username·`-l` 라벨 매칭에서 `*` 는 임의 문자열(그 외 문자는 리터럴, 대소문자 구분). `*` 없으면 정확 일치라 기존 쿼리는 그대로. subset 라벨은 **각 쿼리 패턴이 vault 라벨 1개 이상에 매칭**, exact 라벨은 **양방향 커버**(vault↔쿼리). 출력 username 은 `_display_username` 으로 **엔트리 실제 값** 우선(패턴 노출 방지). **`put` 쓰기 매칭(`entry_matches_identity`/`find_vault_entry_matches`)에는 미적용** — `*` 는 키/유저 문자 그대로 취급.
+  - **셸 글로빙 주의:** 따옴표 없는 `cotp git*` 는 zsh/bash 가 먼저 확장 → zsh 는 매칭 파일 없으면 `no matches found` 로 cotp 실행 전에 중단. 사용자에겐 따옴표(`cotp 'git*'`)·이스케이프(`git\*`)·`noglob cotp …` 또는 `alias cotp='noglob cotp'` 안내(README 양쪽에 기재). cotp 코드 문제 아님.
 - **stdout:** 기본 **한 줄** `HH:MM:SS key/username [otp] [labels]` (`format_get_output_line`). **1건** + 클립보드 사용 시 줄에 표시: password → `key/user/[**pwd**]`, **`-t`** → `key/user/pwd [**otp**]`. **`-w`** → **1건**일 때만 여러 줄 정렬 (`format_get_output`); 복사 성공 안내는 **stderr** (`password is copied…` / `totp value is copied…`). **2건 이상** → 엔트리당 한 줄(마커 없음). **labels** 끼리는 **콤마만**. username 은 CLI 값 또는 vault entry.
 - **클립보드:** **1건**일 때만. `password` 필드는 **표준 Base64(UTF-8)** 로 가정 → 디코드 평문 복사. **`-t`** 이면 **TOTP만** 복사(password 클립보드 생략). **다중 매칭** 시 클립보드·마커 없음.
 - 파이프/스크립트는 **stdout만** 파싱하는 전제가 맞다.

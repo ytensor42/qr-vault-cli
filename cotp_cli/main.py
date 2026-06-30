@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import base64
 import binascii
+import re
 import secrets
 import string
 import sys
@@ -523,11 +524,11 @@ def labels_from_csv(csv: str) -> list[str]:
     return [p.strip() for p in csv.split(",") if p.strip() != ""]
 
 
-def labels_for_vault_entry(cluster: str, username: str, extra: list[str]) -> list[str]:
-    """Vault ``labels``: cluster and username first, then extras (deduped, order kept)."""
+def labels_for_vault_entry(extra: list[str]) -> list[str]:
+    """Vault ``labels``: user-provided extras only (deduped, order kept; no key/username)."""
     out: list[str] = []
     seen: set[str] = set()
-    for raw in (cluster, username, *extra):
+    for raw in extra:
         label = str(raw).strip()
         if not label or label in seen:
             continue
@@ -536,32 +537,44 @@ def labels_for_vault_entry(cluster: str, username: str, extra: list[str]) -> lis
     return out
 
 
-def query_labels_for_get(
-    cluster: str | None,
-    username: str | None,
-    labels_csv: str | None,
-) -> list[str]:
-    """Labels for ``get``: key+username+extras when both set; else CSV extras only."""
+def query_labels_for_get(labels_csv: str | None) -> list[str]:
+    """Labels for ``get``: the CSV extras only (deduped; no key/username)."""
     extra = labels_from_csv(labels_csv) if labels_csv is not None else []
-    if cluster is not None and username is not None:
-        return labels_for_vault_entry(cluster, username, extra)
-    return extra
+    return labels_for_vault_entry(extra)
+
+
+def wildcard_match(pattern: str, value: str) -> bool:
+    """Match ``value`` against ``pattern`` where ``*`` is any run of characters.
+
+    Without ``*`` this is an exact (case-sensitive) string comparison, so existing
+    queries behave unchanged; all other characters are matched literally.
+    """
+    pat = pattern.strip()
+    val = value.strip()
+    if "*" not in pat:
+        return pat == val
+    regex = ".*".join(re.escape(part) for part in pat.split("*"))
+    return re.fullmatch(regex, val) is not None
 
 
 def entry_labels_match_exact(entry: dict, labels: list[str]) -> bool:
+    """Every vault label matches some query pattern and vice versa (``*`` allowed)."""
     raw = entry.get("labels") or []
     if not isinstance(raw, list):
         return False
     vault_labels = [s for x in raw if (s := str(x).strip())]
     want = [s for x in labels if (s := str(x).strip())]
-    return sorted(vault_labels) == sorted(want)
+    vault_covered = all(any(wildcard_match(p, vl) for p in want) for vl in vault_labels)
+    want_covered = all(any(wildcard_match(p, vl) for vl in vault_labels) for p in want)
+    return vault_covered and want_covered
 
 
 def entry_has_all_labels(entry: dict, labels: list[str]) -> bool:
-    want = {str(x).strip() for x in labels if str(x).strip()}
+    want = [str(x).strip() for x in labels if str(x).strip()]
     if not want:
         return False
-    return want <= set(entry_labels_list(entry))
+    vault_labels = entry_labels_list(entry)
+    return all(any(wildcard_match(p, vl) for vl in vault_labels) for p in want)
 
 
 def find_get_matches(
@@ -575,11 +588,11 @@ def find_get_matches(
     """``label_mode``: ``none`` | ``subset`` (vault labels ⊇ want) | ``exact`` (multiset equal)."""
     matches: list[tuple[str, int | None, dict]] = []
     for key, idx, entry in iter_all_vault_slots(data):
-        if cluster is not None and key != cluster:
+        if cluster is not None and not wildcard_match(cluster, key):
             continue
         if username is not None:
             try:
-                if first_username_from_entry(entry) != username.strip():
+                if not wildcard_match(username, first_username_from_entry(entry)):
                     continue
             except ValueError:
                 continue
@@ -822,9 +835,19 @@ def find_get_matches_for_query(
         else:
             label_mode = "subset"
         return find_get_matches(data, cluster, username, query_labels, label_mode=label_mode)
-    if cluster is not None:
+    if cluster is not None or username is not None:
         return find_get_matches(data, cluster, username, None, label_mode="none")
-    raise ValueError("get requires a cluster (KEY) or --labels")
+    raise ValueError("get requires a cluster (KEY), username (-u), or --labels")
+
+
+def _display_username(entry: dict, cli_username: str | None) -> str:
+    """Show the entry's real username; fall back to a concrete (non-wildcard) CLI value."""
+    try:
+        return first_username_from_entry(entry)
+    except ValueError:
+        if cli_username is not None and "*" not in cli_username:
+            return cli_username.strip()
+        raise
 
 
 def run_query(
@@ -862,11 +885,7 @@ def run_query(
         default_clock = datetime.now().strftime("%H:%M:%S")
         for match_key, _idx, entry in matches:
             try:
-                show_user = (
-                    username.strip()
-                    if username is not None
-                    else first_username_from_entry(entry)
-                )
+                show_user = _display_username(entry, username)
             except ValueError:
                 continue
             clock, otp_code = _otp_for_get_entry(entry, default_clock)
@@ -875,9 +894,7 @@ def run_query(
 
     match_key, _idx, entry = matches[0]
     try:
-        show_user = (
-            username.strip() if username is not None else first_username_from_entry(entry)
-        )
+        show_user = _display_username(entry, username)
     except ValueError:
         print(NO_MATCH_LINE)
         return
@@ -963,7 +980,7 @@ def run_put_metadata_only(
         print("error: cluster (key) and username must be non-empty", file=sys.stderr)
         sys.exit(1)
     cli_extra = labels_from_csv(labels_csv) if labels_csv is not None else []
-    vault_labels = labels_for_vault_entry(cluster_name, username_val, cli_extra)
+    vault_labels = labels_for_vault_entry(cli_extra)
     vault_file = default_vault_path()
     try:
         merge_qr_vault_yaml(
@@ -1050,11 +1067,7 @@ def run_save_from_png(
         return
 
     cli_extra = labels_from_csv(labels_csv) if labels_csv is not None else []
-    vault_labels = labels_for_vault_entry(
-        cluster_name,
-        username_val,
-        [*filename_extra, *cli_extra],
-    )
+    vault_labels = labels_for_vault_entry([*filename_extra, *cli_extra])
     seed_for_vault = seeds[0]
     if len(seeds) > 1:
         print(
@@ -1142,7 +1155,7 @@ def argv_for_dispatch(argv: list[str] | None) -> list[str]:
     if first.startswith("-"):
         if any(
             t in argv
-            for t in ("-l", "--labels", "-t", "--totp-clipboard", "-w", "--wide")
+            for t in ("-l", "--labels", "-u", "--user", "-t", "--totp-clipboard", "-w", "--wide")
         ):
             return ["get", *argv]
         return argv
@@ -1167,13 +1180,13 @@ def build_parser() -> argparse.ArgumentParser:
         nargs="?",
         default=None,
         metavar="KEY",
-        help="vault top-level key (with username; labels include key and username)",
+        help="vault top-level key (used with username; not stored as a label)",
     )
     p_put.add_argument(
         "username",
         nargs="?",
         default=None,
-        help="vault username (requires KEY when set)",
+        help="vault username (requires KEY when set; not stored as a label)",
     )
     p_put.add_argument(
         "-f",
@@ -1199,7 +1212,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--labels",
         default=None,
         metavar="LABELS",
-        help="Comma-separated extra labels (key and username are always stored too).",
+        help="Comma-separated labels to store (key and username are not added as labels).",
     )
 
     p_get = sub.add_parser(
@@ -1211,15 +1224,27 @@ def build_parser() -> argparse.ArgumentParser:
         nargs="?",
         default=None,
         metavar="KEY",
-        help="optional vault top-level key",
+        help="optional vault top-level key (supports '*' wildcard; quote it in the shell)",
     )
-    p_get.add_argument("username", nargs="?", default=None, help="optional username")
+    p_get.add_argument(
+        "username",
+        nargs="?",
+        default=None,
+        help="optional username (supports '*' wildcard)",
+    )
+    p_get.add_argument(
+        "-u",
+        "--user",
+        default=None,
+        metavar="USERNAME",
+        help="Match this username across all keys (no KEY needed); prints every match. '*' wildcard ok.",
+    )
     p_get.add_argument(
         "-l",
         "--labels",
         default=None,
         metavar="LABELS",
-        help="Comma-separated labels (with KEY+username: exact set; else vault must include all)",
+        help="Comma-separated labels (with KEY+username: exact set; else vault must include all). '*' wildcard ok.",
     )
     p_get.add_argument(
         "-t",
@@ -1270,15 +1295,18 @@ def main(argv: list[str] | None = None) -> None:
             labels_csv=args.labels,
         )
     elif args.command == "get":
-        if args.cluster is None and args.labels is None:
-            parser.error("get: KEY and/or --labels required")
+        if args.user is not None and args.username is not None:
+            parser.error("get: give username either positionally (with KEY) or with -u, not both")
+        username = args.user if args.user is not None else args.username
+        if args.cluster is None and username is None and args.labels is None:
+            parser.error("get: KEY, username (-u), and/or --labels required")
         strict_labels = args.labels is not None
         get_labels: list[str] | None = None
         if strict_labels:
-            get_labels = query_labels_for_get(args.cluster, args.username, args.labels)
+            get_labels = query_labels_for_get(args.labels)
         run_query(
             args.cluster,
-            args.username,
+            username,
             get_labels,
             strict_labels=strict_labels,
             totp_to_clipboard=args.totp_clipboard,

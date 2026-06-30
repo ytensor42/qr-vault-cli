@@ -35,7 +35,7 @@
 
 ### `cotp put` — QR → 시드 출력 + vault 갱신
 
-vault **`labels`** 에는 항상 **키·username** 이 포함됩니다. **key·username·labels** 가 vault와 **정확히 1건** 일치할 때만 업데이트합니다.
+vault **`labels`** 에는 **키·username 을 저장하지 않고**, 사용자가 준 라벨만 들어갑니다(파일명 `QR-<key>-<user>-<label>…` 의 추가 라벨 포함). **key·username·labels** 가 vault와 **정확히 1건** 일치할 때만 업데이트합니다.
 
 ```bash
 cotp put
@@ -50,7 +50,17 @@ cotp tp00 admin -p
 
 ### `cotp get` — vault에서 TOTP + 비밀번호 클립보드
 
-- stdout 기본 (한 줄): `17:49:08 tp00/admin 123456 tp00,admin,test`
+- stdout 기본 (한 줄): `17:49:08 tp00/admin 123456 test` (labels는 `-l`로 준 값만)
+- **`-u` / `--user`**: KEY 없이 vault 전체에서 username 이 일치하는 **모든 엔트리** 출력. positional username 과 동시 사용 불가.
+- **와일드카드 `*`**: KEY·username(`-u` 포함)·`-l` 라벨 검색에서 `*` = 임의 문자열(나머지는 리터럴·대소문자 구분). 셸에서 `*` 가 확장되지 않도록 따옴표로 감쌉니다: `cotp 'tc*'`, `cotp -u 'admin*'`, `cotp tc00 -l 'prod*'`. **`get` 검색에만** 적용되고 `put` 은 항상 문자 그대로 처리.
+
+> **주의 (zsh/bash):** 따옴표 없는 `cotp git*` 는 셸이 먼저 확장합니다. zsh 는 매칭되는 파일이 없으면 `zsh: no matches found: git*` 로 중단되어 cotp 가 실행되지 않습니다. 패턴을 따옴표로 감싸거나(`cotp 'git*'`), 이스케이프하거나(`cotp git\*`), `noglob` 으로 실행하세요(`noglob cotp git*`). 매번 따옴표가 번거로우면 셸 rc 에 alias 를 추가합니다:
+>
+> ```bash
+> alias cotp='noglob cotp'
+> ```
+>
+> (alias 는 대화형 셸에만 적용됩니다. 스크립트에서는 따옴표 방식을 권장.)
 - **`-w`**: 여러 줄 정렬 (`Timestamp:` / `Key:` / …)
 - **`password`**: Base64(UTF-8) 가정 → 평문을 클립보드. **`-t`**: TOTP만 클립보드.
 
@@ -63,6 +73,11 @@ cotp -l test
 cotp get tp00 alice -l test,prod
 cotp get tp00 alice -t
 cotp get tp00 admin -w
+cotp get -u admin          # 모든 키에서 username admin 매칭
+cotp -u admin              # 위와 동일 (암시적 get)
+cotp 'tc*'                 # tc* 에 매칭되는 모든 키 (셸에서 * 따옴표 처리)
+cotp -u 'admin*'           # admin 으로 시작하는 username
+cotp tc00 -l 'prod*'       # prod* 에 매칭되는 라벨
 ```
 
 ### `cotp read` / `cotp random`

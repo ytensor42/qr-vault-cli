@@ -12,7 +12,10 @@ from cotp_cli.main import (
     decode_vault_password_for_clipboard,
     encode_password_plain_to_vault_b64,
     entry_matches_identity,
+    entry_has_all_labels,
+    entry_labels_match_exact,
     extract_seeds_from_png,
+    find_get_matches_for_query,
     find_vault_entry_matches,
     format_get_output,
     format_get_output_line,
@@ -35,6 +38,7 @@ from cotp_cli.main import (
     seed_for_cluster_name_only,
     seed_for_cluster_user_labels,
     seed_for_cluster_username_any_labels,
+    wildcard_match,
 )
 
 
@@ -351,22 +355,17 @@ def test_labels_from_csv() -> None:
 
 
 def test_labels_for_vault_entry_dedupes_and_orders() -> None:
-    assert labels_for_vault_entry("tp00", "alice", ["admin", "tp00"]) == [
-        "tp00",
-        "alice",
-        "admin",
-    ]
-
-
-def test_query_labels_for_get_includes_key_username_when_extras_empty() -> None:
-    assert query_labels_for_get("tp00", "alice", None) == ["tp00", "alice"]
-    assert query_labels_for_get("tp00", "alice", "") == ["tp00", "alice"]
-    assert query_labels_for_get("tp00", "alice", "admin,prod") == [
-        "tp00",
-        "alice",
+    assert labels_for_vault_entry(["admin", "prod", "admin"]) == [
         "admin",
         "prod",
     ]
+    assert labels_for_vault_entry([]) == []
+
+
+def test_query_labels_for_get_extras_only_no_key_username() -> None:
+    assert query_labels_for_get(None) == []
+    assert query_labels_for_get("") == []
+    assert query_labels_for_get("admin,prod") == ["admin", "prod"]
 
 
 def test_run_query_labels_only_subset_match(
@@ -418,7 +417,7 @@ def test_run_query_strict_labels_requires_full_label_set(
                 "tp00": {
                     "username": "admin",
                     "seed": "JBSWY3DPEHPK3PXP",
-                    "labels": ["tp00", "admin", "test"],
+                    "labels": ["test"],
                 },
             },
         ),
@@ -434,7 +433,7 @@ def test_run_query_strict_labels_requires_full_label_set(
     run_query(
         "tp00",
         "admin",
-        query_labels_for_get("tp00", "admin", None),
+        query_labels_for_get(None),
         strict_labels=True,
     )
     assert capsys.readouterr().out.strip() == NO_MATCH_LINE
@@ -442,7 +441,7 @@ def test_run_query_strict_labels_requires_full_label_set(
     run_query(
         "tp00",
         "admin",
-        query_labels_for_get("tp00", "admin", "test"),
+        query_labels_for_get("test"),
         strict_labels=True,
     )
     assert "999111" in capsys.readouterr().out
@@ -470,6 +469,71 @@ def test_argv_for_dispatch_implicit_put() -> None:
     assert not looks_like_implicit_put(["tp00", "alice", "-t"])
 
 
+def test_argv_for_dispatch_user_flag_implies_get() -> None:
+    assert argv_for_dispatch(["-u", "admin"]) == ["get", "-u", "admin"]
+    assert argv_for_dispatch(["--user", "admin"]) == ["get", "--user", "admin"]
+
+
+def test_find_get_matches_for_query_username_only_all_keys() -> None:
+    data = {
+        "tc00": [{"username": "admin", "seed": "X", "labels": ["test"]}],
+        "tc01": [{"username": "admin", "seed": "Y", "labels": []}],
+        "hanlab": [{"username": "han@x.com", "seed": "Z", "labels": []}],
+    }
+    matches = find_get_matches_for_query(data, None, "admin", None)
+    assert sorted(k for k, _idx, _e in matches) == ["tc00", "tc01"]
+
+    none_match = find_get_matches_for_query(data, None, "nobody", None)
+    assert none_match == []
+
+
+def test_wildcard_match() -> None:
+    assert wildcard_match("tc00", "tc00")
+    assert not wildcard_match("tc00", "tc01")
+    assert wildcard_match("tc*", "tc00")
+    assert wildcard_match("tc*", "tc01")
+    assert not wildcard_match("tc*", "hanlab")
+    assert wildcard_match("*", "anything")
+    assert wildcard_match("*@x.com", "han@x.com")
+    assert wildcard_match("a*b*c", "aXXbYYc")
+    # dots are literal, not regex wildcards
+    assert not wildcard_match("a.c", "abc")
+    assert wildcard_match("han.cho@*", "han.cho@goteleport.com")
+    # surrounding whitespace is ignored on both sides
+    assert wildcard_match(" tc* ", "tc00")
+
+
+def test_find_get_matches_wildcard_key_and_username() -> None:
+    data = {
+        "tc00": [{"username": "admin", "seed": "X", "labels": []}],
+        "tc01": [{"username": "admin2", "seed": "Y", "labels": []}],
+        "hanlab": [{"username": "han@x.com", "seed": "Z", "labels": []}],
+    }
+    by_key = find_get_matches_for_query(data, "tc*", None, None)
+    assert sorted(k for k, _i, _e in by_key) == ["tc00", "tc01"]
+
+    by_user = find_get_matches_for_query(data, None, "admin*", None)
+    assert sorted(k for k, _i, _e in by_user) == ["tc00", "tc01"]
+
+    by_suffix = find_get_matches_for_query(data, None, "*@x.com", None)
+    assert [k for k, _i, _e in by_suffix] == ["hanlab"]
+
+
+def test_entry_label_wildcard_matching() -> None:
+    entry = {"username": "u", "seed": "S", "labels": ["test", "prod"]}
+    assert entry_has_all_labels(entry, ["t*"])
+    assert entry_has_all_labels(entry, ["test", "pr*"])
+    assert not entry_has_all_labels(entry, ["staging*"])
+    assert entry_labels_match_exact(entry, ["*"])
+    assert entry_labels_match_exact(entry, ["test", "prod"])
+    assert not entry_labels_match_exact(entry, ["test"])  # prod uncovered
+
+
+def test_find_get_matches_for_query_requires_some_filter() -> None:
+    with pytest.raises(ValueError, match="KEY"):
+        find_get_matches_for_query({}, None, None, None)
+
+
 def test_run_save_from_png_explicit_key_user_labels(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -489,7 +553,7 @@ def test_run_save_from_png_explicit_key_user_labels(
     data = yaml.safe_load(vault.read_text(encoding="utf-8"))
     assert data["tp00"][0]["seed"] == "SEEDX"
     assert data["tp00"][0]["username"] == "alice"
-    assert data["tp00"][0]["labels"] == ["tp00", "alice"]
+    assert data["tp00"][0]["labels"] == []
 
 
 def test_run_put_metadata_only_updates_labels_preserves_seed(
@@ -520,7 +584,7 @@ def test_run_put_metadata_only_updates_labels_preserves_seed(
 
     data = yaml.safe_load(vault.read_text(encoding="utf-8"))
     assert data["tp00"][0]["seed"] == "SEEDKEEP"
-    assert data["tp00"][0]["labels"] == ["tp00", "admin", "test"]
+    assert data["tp00"][0]["labels"] == ["test"]
     assert data["tp00"][0]["password"] == "old"
 
 
@@ -554,7 +618,7 @@ def test_run_save_from_png_cli_labels(
     )
 
     data = yaml.safe_load(vault.read_text(encoding="utf-8"))
-    assert data["tp00"][0]["labels"] == ["tp00", "admin", "test", "prod"]
+    assert data["tp00"][0]["labels"] == ["test", "prod"]
 
 
 def test_seed_for_cluster_user_labels_ok_and_order_insensitive() -> None:
@@ -644,9 +708,9 @@ def test_merge_qr_vault_yaml_create_merge_update(tmp_path: Path) -> None:
     import yaml  # noqa: PLC0415
 
     vault = tmp_path / "qr-vault.yaml"
-    labels_alice = labels_for_vault_entry("tp00", "alice", ["admin"])
+    labels_alice = labels_for_vault_entry(["admin"])
     merge_qr_vault_yaml(vault, "tp00", "alice", labels_alice, "SEED1", None)
-    merge_qr_vault_yaml(vault, "other", "bob", labels_for_vault_entry("other", "bob", ["x", "y"]), "SEED2", "pw2")
+    merge_qr_vault_yaml(vault, "other", "bob", labels_for_vault_entry(["x", "y"]), "SEED2", "pw2")
     merge_qr_vault_yaml(vault, "tp00", "alice", labels_alice, "SEED3", None)
 
     data = yaml.safe_load(vault.read_text(encoding="utf-8"))
@@ -661,9 +725,9 @@ def test_merge_qr_vault_yaml_create_merge_update(tmp_path: Path) -> None:
 
 def test_merge_qr_vault_yaml_rejects_label_change(tmp_path: Path) -> None:
     vault = tmp_path / "qr-vault.yaml"
-    labels_alice = labels_for_vault_entry("tp00", "alice", ["admin"])
+    labels_alice = labels_for_vault_entry(["admin"])
     merge_qr_vault_yaml(vault, "tp00", "alice", labels_alice, "SEED1", None)
-    want = labels_for_vault_entry("tp00", "alice", ["admin", "prod"])
+    want = labels_for_vault_entry(["admin", "prod"])
     with pytest.raises(VaultUpdateError, match="different labels") as exc:
         merge_qr_vault_yaml(vault, "tp00", "alice", want, "SEED3", None)
     assert "tp00" in exc.value.hints
@@ -675,7 +739,7 @@ def test_merge_qr_vault_yaml_rejects_ambiguous_matches(tmp_path: Path) -> None:
     import yaml  # noqa: PLC0415
 
     vault = tmp_path / "qr-vault.yaml"
-    labels = labels_for_vault_entry("tp00", "alice", [])
+    labels = labels_for_vault_entry([])
     dup = {"username": "alice", "seed": "A", "password": "", "labels": labels}
     vault.write_text(
         yaml.safe_dump({"tp00": [dup, dict(dup)]}, sort_keys=False),
@@ -701,7 +765,7 @@ def test_build_vault_update_hints_lists_username_and_label_overlap() -> None:
           labels: [other, alice, shared]
         """
     )
-    want = labels_for_vault_entry("tp00", "alice", ["shared"])
+    want = labels_for_vault_entry(["shared"])
     hints = build_vault_update_hints(data, "tp00", "alice", want, [])
     assert "key='tp00'" in hints
     assert "admin" in hints
@@ -711,10 +775,10 @@ def test_build_vault_update_hints_lists_username_and_label_overlap() -> None:
 
 
 def test_find_vault_entry_matches_list_slot() -> None:
-    labels = labels_for_vault_entry("tp00", "alice", ["admin"])
+    labels = labels_for_vault_entry(["admin"])
     data = {
         "tp00": [
-            {"username": "bob", "seed": "X", "labels": labels_for_vault_entry("tp00", "bob", [])},
+            {"username": "bob", "seed": "X", "labels": labels_for_vault_entry([])},
             {"username": "alice", "seed": "Y", "labels": labels},
         ],
     }
@@ -722,13 +786,22 @@ def test_find_vault_entry_matches_list_slot() -> None:
     assert entry_matches_identity(data["tp00"][1], "alice", labels)
 
 
+def test_put_matching_treats_wildcard_literally() -> None:
+    data = {
+        "tp00": [{"username": "alice", "seed": "Y", "labels": ["admin"]}],
+    }
+    # '*' must not act as a wildcard when writing (put identity match is exact).
+    assert find_vault_entry_matches(data, "tp00", "ali*", ["admin"]) == []
+    assert not entry_matches_identity(data["tp00"][0], "ali*", ["admin"])
+
+
 def test_merge_qr_vault_yaml_appends_new_username_under_key(tmp_path: Path) -> None:
     import yaml  # noqa: PLC0415
 
     vault = tmp_path / "qr-vault.yaml"
-    labels_u = labels_for_vault_entry("handemo", "han.cho@goteleport.com", ["internal"])
+    labels_u = labels_for_vault_entry(["internal"])
     merge_qr_vault_yaml(vault, "handemo", "han.cho@goteleport.com", labels_u, "SEED1", "pw1")
-    labels_admin = labels_for_vault_entry("handemo", "admin", ["internal"])
+    labels_admin = labels_for_vault_entry(["internal"])
     merge_qr_vault_yaml(vault, "handemo", "admin", labels_admin, "SEED2", "pw2")
 
     data = yaml.safe_load(vault.read_text(encoding="utf-8"))
@@ -743,9 +816,9 @@ def test_merge_qr_vault_yaml_password_preserve_and_override(tmp_path: Path) -> N
     import yaml  # noqa: PLC0415
 
     vault = tmp_path / "qr-vault.yaml"
-    labels = labels_for_vault_entry("c", "u", [])
+    labels = labels_for_vault_entry([])
     merge_qr_vault_yaml(vault, "c", "u", labels, "S1", "secret1")
-    merge_qr_vault_yaml(vault, "c", "u2", labels_for_vault_entry("c", "u2", ["l"]), "S2", None)
+    merge_qr_vault_yaml(vault, "c", "u2", labels_for_vault_entry(["l"]), "S2", None)
     data = yaml.safe_load(vault.read_text())
     assert len(data["c"]) == 2
     assert data["c"][0]["password"] == "secret1"

@@ -88,7 +88,7 @@ def test_main_implicit_put_dispatches_to_put(
 
     data = yaml.safe_load(vault.read_text(encoding="utf-8"))
     assert data["lab"][0]["username"] == "bob"
-    assert data["lab"][0]["labels"] == ["lab", "bob"]
+    assert data["lab"][0]["labels"] == []
 
 
 def test_main_put_interactive_password_b64(
@@ -160,7 +160,7 @@ def test_main_implicit_put_without_file_flag(
     assert called == []
     data = yaml.safe_load(vault.read_text(encoding="utf-8"))
     assert data["tp00"][0]["seed"] == "KEEPSEED"
-    assert data["tp00"][0]["labels"] == ["tp00", "admin", "test"]
+    assert data["tp00"][0]["labels"] == ["test"]
 
 
 def test_main_get_key_and_labels_without_username(
@@ -194,6 +194,58 @@ def test_main_get_key_and_labels_without_username(
     assert "999111" in capsys.readouterr().out
 
 
+def test_main_get_user_flag_matches_all_keys(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    import yaml  # noqa: PLC0415
+
+    import cotp_cli.main as vm
+
+    vault = tmp_path / "qr-vault.yaml"
+    vault.write_text(
+        yaml.safe_dump(
+            {
+                "tc00": [{"username": "admin", "seed": "JBSWY3DPEHPK3PXP", "labels": ["test"]}],
+                "tc01": [{"username": "admin", "seed": "JBSWY3DPEHPK3PXP", "labels": []}],
+                "hanlab": [{"username": "han@x.com", "seed": "JBSWY3DPEHPK3PXP", "labels": []}],
+            },
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(vm, "default_vault_path", lambda: vault)
+    monkeypatch.setattr(vm, "copy_text_to_clipboard", lambda _t: None)
+    monkeypatch.setattr(vm, "totp_parts", lambda _seed: ("01:02:03", "999111"))
+
+    main(["-u", "admin"])
+
+    out = capsys.readouterr().out
+    assert "tc00/admin" in out
+    assert "tc01/admin" in out
+    assert "hanlab" not in out
+
+
+def test_main_get_user_flag_conflicts_with_positional(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import yaml  # noqa: PLC0415
+
+    import cotp_cli.main as vm
+
+    vault = tmp_path / "qr-vault.yaml"
+    vault.write_text(
+        yaml.safe_dump({"tc00": [{"username": "admin", "seed": "S", "labels": []}]}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(vm, "default_vault_path", lambda: vault)
+
+    with pytest.raises(SystemExit) as exc:
+        main(["get", "tc00", "admin", "-u", "bob"])
+    assert exc.value.code == 2
+
+
 def test_main_get_accepts_labels_flag(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -210,7 +262,7 @@ def test_main_get_accepts_labels_flag(
                 "tp00": {
                     "username": "admin",
                     "seed": "JBSWY3DPEHPK3PXP",
-                    "labels": ["tp00", "admin", "test"],
+                    "labels": ["test"],
                 },
             },
         ),
@@ -242,7 +294,7 @@ def test_main_put_accepts_labels_flag(
     main(["put", "lab", "bob", "-l", "test", "-f", str(png)])
 
     data = yaml.safe_load(vault.read_text(encoding="utf-8"))
-    assert data["lab"][0]["labels"] == ["lab", "bob", "test"]
+    assert data["lab"][0]["labels"] == ["test"]
 
 
 def test_main_random_prints_plain_and_base64(capsys: pytest.CaptureFixture[str]) -> None:

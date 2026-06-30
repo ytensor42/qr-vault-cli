@@ -35,7 +35,7 @@ After install, run **`cotp`** (or `python -m cotp_cli` inside the install venv).
 
 ### `cotp put` — read QR, print seed, update the vault
 
-Vault **`labels`** always include the **cluster key** and **username**; extra labels come from a `QR-<key>-<user>-<label>…` filename when present. **Updates** only when exactly **one** existing entry matches the same key, username, and label set (no overwrite on mismatch or ambiguity).
+Vault **`labels`** store only the labels you provide (the **cluster key** and **username** are **not** added as labels); extra labels can also come from a `QR-<key>-<user>-<label>…` filename when present. **Updates** only when exactly **one** existing entry matches the same key, username, and label set (no overwrite on mismatch or ambiguity).
 
 ```bash
 cotp put
@@ -52,6 +52,18 @@ cotp tp00 admin -p                          # implicit put (-f or -p; else get)
 
 If the first token is not `put`, `get`, `read`, or `random`, and it does not start with `-`, it is treated as **`get` with that argument list**. For example, `cotp tp00 alice` is the same as `cotp get tp00 alice`. With **no arguments**, `cotp` prints help (same as `cotp -h`).
 
+**`-u` / `--user`** matches a username across **all** keys (no KEY needed) and prints **every** matching entry, one line each. It cannot be combined with the positional `username`.
+
+**Wildcards:** the KEY, the username (positional or `-u`), and each `-l` label support `*` as "any run of characters" (everything else is literal, case-sensitive). Quote patterns in the shell so `*` is not expanded, e.g. `cotp 'tc*'`, `cotp -u 'admin*'`, `cotp tc00 -l 'prod*'`. Wildcards apply to `get` searches only; `put` always writes/matches literally.
+
+> **Heads up (zsh/bash):** an unquoted `cotp git*` is expanded by the shell first. In zsh, when nothing matches you get `zsh: no matches found: git*` and cotp never runs. Quote the pattern (`cotp 'git*'`), escape it (`cotp git\*`), or run it through `noglob` (`noglob cotp git*`). To skip quoting every time, add an alias to your shell rc:
+>
+> ```bash
+> alias cotp='noglob cotp'
+> ```
+>
+> (Aliases apply to interactive shells only; prefer quoting inside scripts.)
+
 - stdout default (one line): `HH:MM:SS key/username [otp] [labels]` (labels comma-separated; OTP omitted if no seed). When the clipboard is used (single match only), the line marks what was copied: `key/user/[**pwd**]` for password, or `key/user/pwd [**otp**]` with **`-t`**.
 - **`-w`**: multi-line aligned output (`Timestamp:`, `Key:`, `Username:`, …); clipboard success messages go to **stderr** as before.
 - The vault entry **`password`** is assumed to be **Base64 (UTF-8)**; the decoded **plaintext is copied to the clipboard**. With **`-t`**, only the **TOTP code** is copied (password is not copied).
@@ -63,6 +75,11 @@ cotp get tp00 alice -l admin,prod
 cotp tp00 admin -l test
 cotp get tp00 alice -t
 cotp get tp00 admin -w
+cotp get -u admin          # all entries (any key) with username admin
+cotp -u admin              # same (implicit get)
+cotp 'tc*'                 # every key matching tc* (quote * in the shell)
+cotp -u 'admin*'           # usernames starting with admin
+cotp tc00 -l 'prod*'       # labels matching prod*
 ```
 
 - macOS: `pbcopy` · Linux: one of `wl-copy` / `xclip` / `xsel`.
