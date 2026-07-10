@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.2] — 2026-07-10
+
+### Added
+
+- `cotp-web`: stop an existing background server before starting a new one (`~/.cotp/cotp-web.pid`).
+
+### Changed
+
+- `cotp-web`: second display uses green (0–49s) and a green→red gradient (50–59s).
+- `install.sh`: print installed version on verify; force-reinstall on upgrade (avoid stale pip/git cache).
+
 ## [0.7.1] — 2026-07-10
 
 ### Added
@@ -51,7 +62,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Earlier history: see git log and PyPI release notes.
 
-[Unreleased]: https://github.com/ytensor42/qr-vault-cli/compare/v0.7.1...HEAD
+[Unreleased]: https://github.com/ytensor42/qr-vault-cli/compare/v0.7.2...HEAD
+[0.7.2]: https://github.com/ytensor42/qr-vault-cli/compare/v0.7.1...v0.7.2
 [0.7.1]: https://github.com/ytensor42/qr-vault-cli/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/ytensor42/qr-vault-cli/compare/v0.6.9...v0.7.0
 [0.6.9]: https://github.com/ytensor42/qr-vault-cli/compare/v0.6.8...v0.6.9

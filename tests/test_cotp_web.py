@@ -13,7 +13,13 @@ from unittest.mock import patch
 import pytest
 import yaml
 
-from cotp_web.__main__ import DEFAULT_BACKGROUND_SECONDS, _child_argv
+from cotp_web.__main__ import DEFAULT_BACKGROUND_SECONDS, _child_argv, _spawn_background
+from cotp_web.process import (
+    read_background_pid,
+    register_background_pid,
+    remove_pid_file,
+    stop_existing_background,
+)
 from cotp_web.server import make_handler, run_server
 from cotp_web.vault import (
     EntryRefError,
@@ -65,6 +71,81 @@ def test_child_argv_for_background_spawn() -> None:
         "--port",
         "9000",
     ]
+
+
+def test_read_background_pid_missing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("cotp_web.process.PID_FILE", tmp_path / "cotp-web.pid")
+    assert read_background_pid() is None
+
+
+def test_stop_existing_background_stale_pid(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+  pid_file = tmp_path / "cotp-web.pid"
+  pid_file.write_text("999999\n", encoding="utf-8")
+  monkeypatch.setattr("cotp_web.process.PID_FILE", pid_file)
+  assert stop_existing_background() is None
+  assert not pid_file.exists()
+
+
+def test_stop_existing_background_terminates_process(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import os
+    import signal
+    import time
+
+    pid_file = tmp_path / "cotp-web.pid"
+    monkeypatch.setattr("cotp_web.process.PID_FILE", pid_file)
+
+    child = os.fork()
+    if child == 0:
+        time.sleep(30)
+        raise SystemExit(0)
+
+    pid_file.write_text(f"{child}\n", encoding="utf-8")
+    monkeypatch.setattr(
+        "cotp_web.process.is_cotp_web_process",
+        lambda pid: pid == child,
+    )
+
+    stopped = stop_existing_background()
+    assert stopped == child
+    assert not pid_file.exists()
+
+    os.kill(child, signal.SIGKILL)
+    os.waitpid(child, 0)
+
+
+def test_register_background_pid_writes_and_cleans(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pid_file = tmp_path / "cotp-web.pid"
+    monkeypatch.setattr("cotp_web.process.PID_FILE", pid_file)
+    monkeypatch.setattr("cotp_web.process.PID_DIR", tmp_path)
+
+    register_background_pid(4242)
+    assert read_background_pid() == 4242
+    remove_pid_file()
+    assert read_background_pid() is None
+
+
+def test_spawn_background_stops_existing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[int | None] = []
+
+    def fake_stop() -> int | None:
+        calls.append(1)
+        return 1234
+
+    monkeypatch.setattr("cotp_web.__main__.stop_existing_background", fake_stop)
+    monkeypatch.setattr(
+        "cotp_web.__main__.subprocess.Popen",
+        lambda *a, **k: type("P", (), {"pid": 5678})(),
+    )
+
+    _spawn_background(["entries.yaml", "--foreground", "--max-runtime", "3600"])
+    assert calls == [1]
+
 
 
 def test_run_server_prints_url_only(capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:

@@ -9,6 +9,7 @@ from pathlib import Path
 
 from cotp_cli.main import default_vault_path
 
+from cotp_web.process import register_background_pid, stop_existing_background
 from cotp_web.server import format_serving_message, run_server
 from cotp_web.vault import resolve_entries_path
 
@@ -43,6 +44,9 @@ def _child_argv(args: argparse.Namespace, max_runtime: int) -> list[str]:
 
 
 def _spawn_background(child_argv: list[str]) -> subprocess.Popen[bytes]:
+    stopped = stop_existing_background()
+    if stopped is not None:
+        print(f"stopped existing cotp-web (pid {stopped})", file=sys.stderr)
     return subprocess.Popen(
         [sys.executable, "-m", "cotp_web", *child_argv],
         start_new_session=True,
@@ -102,6 +106,9 @@ def main(argv: list[str] | None = None) -> int:
         _spawn_background(_child_argv(args, DEFAULT_BACKGROUND_SECONDS))
         print(format_serving_message(args.host, args.port))
         return 0
+
+    if args.foreground and args.max_runtime is not None and args.max_runtime > 0:
+        register_background_pid()
 
     run_server(
         vault_path=vault_path,

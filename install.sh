@@ -213,7 +213,10 @@ verify_installation() {
   verify_pyzbar "$VENV_PYTHON"
   "$dest" --help >/dev/null 2>&1 || die "verify FAIL: $dest --help failed"
   "$dest_web" --help >/dev/null 2>&1 || die "verify FAIL: $dest_web --help failed"
+  local pkg_ver
+  pkg_ver="$("$VENV_PYTHON" -c 'from importlib.metadata import version; print(version("cotp-cli"))')"
   note "verify OK:"
+  note "  version:  cotp-cli $pkg_ver"
   note "  cotp:     $dest"
   note "  cotp-web: $dest_web"
   note "  config:   $CONFIG_FILE"
@@ -280,11 +283,11 @@ pip_install_package() {
 
   if use_local_source; then
     note "installing from local tree: $ROOT"
-    pip_install_with_retry "$VENV_PYTHON" -m pip install --upgrade "$ROOT" >&2 \
+    pip_install_with_retry "$VENV_PYTHON" -m pip install --upgrade --force-reinstall "$ROOT" >&2 \
       || die "pip install from $ROOT failed"
   else
     note "installing from GitHub (main)..."
-    pip_install_with_retry "$VENV_PYTHON" -m pip install --upgrade "$GITHUB_PKG" >&2 \
+    pip_install_with_retry "$VENV_PYTHON" -m pip install --upgrade --force-reinstall --no-cache-dir "$GITHUB_PKG" >&2 \
       || die "pip install from GitHub failed (offline? copy this repo folder and re-run ./install.sh)"
   fi
 }
