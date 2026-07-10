@@ -101,12 +101,12 @@ cotp random
 
 ## `cotp-web` — local web UI (clipboard)
 
-A small **localhost-only** server that lists selected vault entries and copies **password** or **TOTP** to the clipboard when you click a button. Seeds and passwords are **not** included in the HTML or the initial API response; values are fetched only when you press **Pwd** or **OTP**.
+A small **localhost-only** server that lists selected vault entries and copies **username**, **password**, or **TOTP** to the clipboard when you click a button. Seeds and passwords are **not** included in the HTML or the initial API response; values are fetched only when you press **User**, **Pwd**, or **OTP**.
 
 ### Features
 
 - Entry list from a YAML file (see below); vault path from **`COTP_CONFIG`** / `vault_path` (same as `cotp`).
-- Page layout: `cotp-web v<version>`, current **second** (sticky header), then one row per entry with **Pwd** / **OTP** buttons.
+- Page layout: `cotp-web v<version>`, current **second** (sticky header), then one row per entry with **User** / **Pwd** / **OTP** buttons.
 - **OTP** button is shown only when the vault entry has a usable seed; **Pwd** stays in the same column on every row.
 - Hover highlight (yellow); brief green flash on successful copy.
 - Foreground: `==> 127.0.0.1:<port>  until CTRL-C` · optional background run for **1 hour** (interactive prompt).

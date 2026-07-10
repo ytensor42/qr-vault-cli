@@ -23,6 +23,7 @@ from cotp_web.vault import (
     resolve_entries_path,
     resolve_vault_entry,
     totp_code_for_entry,
+    username_for_entry,
 )
 
 
@@ -179,6 +180,8 @@ def test_resolve_vault_entry_and_secrets() -> None:
 
     gh_entry = resolve_vault_entry(data, "github.deepsolo")
     assert password_plaintext_for_entry(gh_entry) == "Dp1solo1@"
+    assert username_for_entry(test_entry) == "admin"
+    assert username_for_entry(gh_entry) == "deepsolo"
     with pytest.raises(EntryRefError, match="no usable seed"):
         totp_code_for_entry(gh_entry)
 
@@ -225,6 +228,12 @@ def test_api_does_not_leak_secrets_in_entries_list(tmp_path: Path) -> None:
         pwd_payload = json.loads(res.read().decode())
         assert res.status == 200
         assert pwd_payload["value"] == "admin11admin11"
+
+        conn.request("POST", "/api/copy/username/test.admin")
+        res = conn.getresponse()
+        user_payload = json.loads(res.read().decode())
+        assert res.status == 200
+        assert user_payload["value"] == "admin"
 
         conn.request("POST", "/api/copy/otp/github.deepsolo")
         res = conn.getresponse()

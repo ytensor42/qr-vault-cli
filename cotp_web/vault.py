@@ -13,6 +13,7 @@ from cotp_cli.main import (
     decode_vault_password_for_clipboard,
     entry_has_usable_seed,
     find_vault_entry_matches_by_user,
+    first_username_from_entry,
     load_qr_vault_mapping,
 )
 
@@ -104,6 +105,14 @@ def resolve_vault_entry(vault_data: dict, entry_ref: str) -> dict:
         raise EntryRefError(msg)
     _match_key, idx = matches[0]
     return _get_vault_slot(vault_data, key, idx)
+
+
+def username_for_entry(entry: dict) -> str:
+    username = first_username_from_entry(entry)
+    if not username:
+        msg = "entry has no username"
+        raise EntryRefError(msg)
+    return username
 
 
 def password_plaintext_for_entry(entry: dict) -> str:

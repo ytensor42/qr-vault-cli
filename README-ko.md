@@ -90,12 +90,12 @@ cotp random
 
 ## `cotp-web` — 로컬 웹 UI (클립보드)
 
-**localhost 전용** 미니 서버. YAML에 적어 둔 vault 엔트리를 나열하고, **Pwd** / **OTP** 버튼으로 클립보드에 복사합니다. 시드·비밀번호는 HTML이나 목록 API에 **노출되지 않고**, 버튼을 눌렀을 때만 서버에서 받습니다.
+**localhost 전용** 미니 서버. YAML에 적어 둔 vault 엔트리를 나열하고, **User** / **Pwd** / **OTP** 버튼으로 클립보드에 복사합니다. 시드·비밀번호는 HTML이나 목록 API에 **노출되지 않고**, 버튼을 눌렀을 때만 서버에서 받습니다.
 
 ### 기능
 
 - 엔트리 목록 YAML + `COTP_CONFIG` 의 **`vault_path`** ( `cotp` 와 동일).
-- 화면: `cotp-web v<version>` · 현재 **초**(상단 고정) · 엔트리별 **Pwd** / **OTP**.
+- 화면: `cotp-web v<version>` · 현재 **초**(상단 고정) · 엔트리별 **User** / **Pwd** / **OTP**.
 - seed 가 없으면 **OTP** 버튼 숨김; **Pwd** 열 위치는 다른 행과 동일.
 - 마우스 hover 노란색 하이라이트; 복사 성공 시 잠깐 녹색 플래시.
 - 포그라운드: `==> 127.0.0.1:<port>  until CTRL-C` · 백그라운드 실행 선택 시 **1시간** 후 자동 종료.

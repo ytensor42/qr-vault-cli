@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "cotp-cli"
-version = "0.6.9"
+version = "0.7.1"
 description = "cotp-cli: cotp [get] put|get|read|random — QR vault, TOTP, seed dump, password."
 readme = "README.md"
 license = { text = "MIT" }

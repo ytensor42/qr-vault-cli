@@ -20,9 +20,10 @@ from cotp_web.vault import (
     resolve_vault_entry,
     summarize_entry_ref,
     totp_code_for_entry,
+    username_for_entry,
 )
 
-_COPY_PATH = re.compile(r"^/api/copy/(password|otp)/(.+)$")
+_COPY_PATH = re.compile(r"^/api/copy/(password|otp|username)/(.+)$")
 REPO_URL = "https://github.com/ytensor42/qr-vault-cli"
 
 
@@ -93,13 +94,15 @@ def _html_page(version: str) -> bytes:
       margin: 0;
       line-height: 1;
       font-variant-numeric: tabular-nums;
+      color: #28a745;
+      transition: color 0.35s ease;
     }}
     .entries-panel {{
       padding-top: 0.5rem;
     }}
     .row {{
       display: grid;
-      grid-template-columns: 1fr 3.25rem 3.25rem;
+      grid-template-columns: 1fr 3.25rem 3.25rem 3.25rem;
       align-items: center;
       gap: 0.75rem;
       margin: 0 -0.5rem;
@@ -175,8 +178,21 @@ def _html_page(version: str) -> bytes:
     const statusEl = document.getElementById("status");
     const secondEl = document.getElementById("second");
 
+    function colorForSecond(sec) {{
+      const green = [40, 167, 69];
+      const red = [239, 68, 68];
+      if (sec < 50) {{
+        return `rgb(${{green.join(",")}})`;
+      }}
+      const t = (sec - 50) / 9;
+      const mix = (from, to) => Math.round(from + (to - from) * t);
+      return `rgb(${{mix(green[0], red[0])}}, ${{mix(green[1], red[1])}}, ${{mix(green[2], red[2])}})`;
+    }}
+
     function updateSecond() {{
-      secondEl.textContent = String(new Date().getSeconds()).padStart(2, "0");
+      const sec = new Date().getSeconds();
+      secondEl.textContent = String(sec).padStart(2, "0");
+      secondEl.style.color = colorForSecond(sec);
     }}
 
     updateSecond();
@@ -210,7 +226,12 @@ def _html_page(version: str) -> bytes:
         if (!res.ok) throw new Error(data.error || "copy failed");
         await navigator.clipboard.writeText(data.value);
         flashCopied(row);
-        setStatus(kind === "password" ? "Password copied." : "OTP copied.");
+        const labels = {{
+          password: "Password copied.",
+          otp: "OTP copied.",
+          username: "Username copied.",
+        }};
+        setStatus(labels[kind] || "Copied.");
       }} catch (err) {{
         setStatus(err.message || String(err), true);
       }} finally {{
@@ -234,6 +255,11 @@ def _html_page(version: str) -> bytes:
         name.className = "name";
         name.textContent = entry.id;
 
+        const userBtn = document.createElement("button");
+        userBtn.type = "button";
+        userBtn.textContent = "User";
+        userBtn.addEventListener("click", () => copyValue(entry.id, "username", userBtn, row));
+
         const pwdBtn = document.createElement("button");
         pwdBtn.type = "button";
         pwdBtn.textContent = "Pwd";
@@ -243,6 +269,10 @@ def _html_page(version: str) -> bytes:
         otpBtn.type = "button";
         otpBtn.textContent = "OTP";
         otpBtn.addEventListener("click", () => copyValue(entry.id, "otp", otpBtn, row));
+
+        const userSlot = document.createElement("div");
+        userSlot.className = "btn-slot";
+        userSlot.append(userBtn);
 
         const pwdSlot = document.createElement("div");
         pwdSlot.className = "btn-slot";
@@ -254,7 +284,7 @@ def _html_page(version: str) -> bytes:
           otpSlot.append(otpBtn);
         }}
 
-        row.append(name, pwdSlot, otpSlot);
+        row.append(name, userSlot, pwdSlot, otpSlot);
         root.append(row);
       }}
     }}
@@ -318,8 +348,10 @@ class CotpWebHandler(BaseHTTPRequestHandler):
             entry = resolve_vault_entry(self.vault_data, entry_ref)
             if kind == "password":
                 value = password_plaintext_for_entry(entry)
-            else:
+            elif kind == "otp":
                 value = totp_code_for_entry(entry)
+            else:
+                value = username_for_entry(entry)
         except EntryRefError as exc:
             self._send_json(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
             return
