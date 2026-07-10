@@ -89,8 +89,16 @@ def entry_has_otp(entry: dict) -> bool:
 
 def summarize_entry_ref(vault_data: dict, entry_ref: str) -> dict[str, str | bool]:
     """Public fields for the web UI (no secrets)."""
+    key, query_user = parse_entry_ref(entry_ref)
     entry = resolve_vault_entry(vault_data, entry_ref)
-    return {"id": entry_ref, "has_otp": entry_has_otp(entry)}
+    vault_user = first_username_from_entry(entry)
+    username = vault_user or query_user
+    return {
+        "id": entry_ref,
+        "key": key,
+        "username": username,
+        "has_otp": entry_has_otp(entry),
+    }
 
 
 def resolve_vault_entry(vault_data: dict, entry_ref: str) -> dict:

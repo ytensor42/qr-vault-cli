@@ -28,6 +28,7 @@ from cotp_web.vault import (
     password_plaintext_for_entry,
     resolve_entries_path,
     resolve_vault_entry,
+    summarize_entry_ref,
     totp_code_for_entry,
     username_for_entry,
 )
@@ -267,6 +268,22 @@ def test_resolve_vault_entry_and_secrets() -> None:
         totp_code_for_entry(gh_entry)
 
 
+def test_summarize_entry_ref_splits_key_and_username() -> None:
+    data = _sample_vault()
+    assert summarize_entry_ref(data, "test.admin") == {
+        "id": "test.admin",
+        "key": "test",
+        "username": "admin",
+        "has_otp": True,
+    }
+    assert summarize_entry_ref(data, "github.deepsolo") == {
+        "id": "github.deepsolo",
+        "key": "github",
+        "username": "deepsolo",
+        "has_otp": False,
+    }
+
+
 def test_api_does_not_leak_secrets_in_entries_list(tmp_path: Path) -> None:
     from http.server import ThreadingHTTPServer
 
@@ -296,8 +313,18 @@ def test_api_does_not_leak_secrets_in_entries_list(tmp_path: Path) -> None:
         assert res.status == 200
         assert payload == {
             "entries": [
-                {"id": "test.admin", "has_otp": True},
-                {"id": "github.deepsolo", "has_otp": False},
+                {
+                    "id": "test.admin",
+                    "key": "test",
+                    "username": "admin",
+                    "has_otp": True,
+                },
+                {
+                    "id": "github.deepsolo",
+                    "key": "github",
+                    "username": "deepsolo",
+                    "has_otp": False,
+                },
             ],
         }
         body_text = json.dumps(payload)

@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.3] — 2026-07-10
+
+### Changed
+
+- `cotp-web`: split entry rows into **account** and **username** columns; click username to copy (User button removed).
+- `cotp-web`: Pwd/OTP button colors; OTP buttons fade green→white (50–59s) while the second display stays green→red.
+- `cotp-web`: username cell uses blue border and black text; stays white when the row is hovered.
+
 ## [0.7.2] — 2026-07-10
 
 ### Added
@@ -62,7 +70,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Earlier history: see git log and PyPI release notes.
 
-[Unreleased]: https://github.com/ytensor42/qr-vault-cli/compare/v0.7.2...HEAD
+[Unreleased]: https://github.com/ytensor42/qr-vault-cli/compare/v0.7.3...HEAD
+[0.7.3]: https://github.com/ytensor42/qr-vault-cli/compare/v0.7.2...v0.7.3
 [0.7.2]: https://github.com/ytensor42/qr-vault-cli/compare/v0.7.1...v0.7.2
 [0.7.1]: https://github.com/ytensor42/qr-vault-cli/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/ytensor42/qr-vault-cli/compare/v0.6.9...v0.7.0

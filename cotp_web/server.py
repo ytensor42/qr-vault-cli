@@ -16,6 +16,7 @@ from cotp_web.vault import (
     EntryRefError,
     load_entry_refs,
     load_vault,
+    parse_entry_ref,
     password_plaintext_for_entry,
     resolve_vault_entry,
     summarize_entry_ref,
@@ -102,7 +103,7 @@ def _html_page(version: str) -> bytes:
     }}
     .row {{
       display: grid;
-      grid-template-columns: 1fr 3.25rem 3.25rem 3.25rem;
+      grid-template-columns: minmax(0, 0.75fr) minmax(0, 1.25fr) 3.25rem 3.25rem;
       align-items: center;
       gap: 0.75rem;
       margin: 0 -0.5rem;
@@ -127,7 +128,42 @@ def _html_page(version: str) -> bytes:
       65% {{ background-color: #5fe89a; }}
       100% {{ background-color: transparent; }}
     }}
-    .name {{ font-weight: 500; word-break: break-all; min-width: 0; }}
+    .col-key {{
+      font-weight: 500;
+      font-size: 0.85rem;
+      color: color-mix(in srgb, currentColor 62%, transparent);
+      word-break: break-all;
+      min-width: 0;
+    }}
+    .col-username {{
+      font: inherit;
+      font-weight: 700;
+      font-size: inherit;
+      word-break: break-all;
+      min-width: 0;
+      width: 100%;
+      box-sizing: border-box;
+      text-align: left;
+      padding: 0.35rem 0.4rem;
+      border-radius: 0.35rem;
+      border: 1px solid #2563eb;
+      background: transparent;
+      color: #000000;
+      cursor: pointer;
+      transition: background-color 0.15s ease, border-color 0.15s ease;
+    }}
+    .col-username:hover {{
+      background: color-mix(in srgb, #2563eb 10%, transparent);
+      border-color: #1d4ed8;
+    }}
+    .row.is-hover .col-username,
+    .row.is-hover .col-username:hover {{
+      background: #ffffff;
+    }}
+    .col-username:disabled {{
+      opacity: 0.5;
+      cursor: not-allowed;
+    }}
     .btn-slot {{
       width: 3.25rem;
       justify-self: end;
@@ -142,9 +178,28 @@ def _html_page(version: str) -> bytes:
       background: color-mix(in srgb, currentColor 6%, transparent);
       cursor: pointer;
       white-space: nowrap;
+      font-weight: 600;
+      font-size: 0.8rem;
     }}
     button:hover {{ background: color-mix(in srgb, currentColor 12%, transparent); }}
     button:disabled {{ opacity: 0.5; cursor: not-allowed; }}
+    button.btn-pwd {{
+      background: #ea580c;
+      border-color: #ea580c;
+      color: #ffffff;
+    }}
+    button.btn-pwd:hover {{
+      background: #c2410c;
+      border-color: #c2410c;
+    }}
+    button.btn-otp {{
+      color: #ffffff;
+      border: 1px solid;
+      transition: background-color 0.35s ease, border-color 0.35s ease;
+    }}
+    button.btn-otp:hover {{
+      filter: brightness(1.08);
+    }}
     .msg {{ min-height: 1.25rem; font-size: 0.85rem; color: color-mix(in srgb, currentColor 55%, transparent); }}
     .msg.err {{ color: #c0392b; }}
     .disclaimer {{
@@ -177,6 +232,7 @@ def _html_page(version: str) -> bytes:
   <script>
     const statusEl = document.getElementById("status");
     const secondEl = document.getElementById("second");
+    const otpButtons = [];
 
     function colorForSecond(sec) {{
       const green = [40, 167, 69];
@@ -189,10 +245,34 @@ def _html_page(version: str) -> bytes:
       return `rgb(${{mix(green[0], red[0])}}, ${{mix(green[1], red[1])}}, ${{mix(green[2], red[2])}})`;
     }}
 
+    function colorForOtpButton(sec) {{
+      const green = [40, 167, 69];
+      const white = [255, 255, 255];
+      if (sec < 50) {{
+        return {{ bg: `rgb(${{green.join(",")}})`, fg: "#ffffff" }};
+      }}
+      const t = (sec - 50) / 9;
+      const mix = (from, to) => Math.round(from + (to - from) * t);
+      const bg = `rgb(${{mix(green[0], white[0])}}, ${{mix(green[1], white[1])}}, ${{mix(green[2], white[2])}})`;
+      const fgVal = mix(255, 0);
+      return {{ bg, fg: `rgb(${{fgVal}}, ${{fgVal}}, ${{fgVal}})` }};
+    }}
+
+    function applyOtpButtonColors(sec) {{
+      const {{ bg, fg }} = colorForOtpButton(sec);
+      for (const btn of otpButtons) {{
+        btn.style.backgroundColor = bg;
+        btn.style.borderColor = bg;
+        btn.style.color = fg;
+      }}
+    }}
+
     function updateSecond() {{
       const sec = new Date().getSeconds();
       secondEl.textContent = String(sec).padStart(2, "0");
-      secondEl.style.color = colorForSecond(sec);
+      const color = colorForSecond(sec);
+      secondEl.style.color = color;
+      applyOtpButtonColors(sec);
     }}
 
     updateSecond();
@@ -214,8 +294,8 @@ def _html_page(version: str) -> bytes:
       );
     }}
 
-    async function copyValue(entryId, kind, button, row) {{
-      button.disabled = true;
+    async function copyValue(entryId, kind, trigger, row) {{
+      trigger.disabled = true;
       setStatus("");
       try {{
         const res = await fetch(
@@ -235,7 +315,7 @@ def _html_page(version: str) -> bytes:
       }} catch (err) {{
         setStatus(err.message || String(err), true);
       }} finally {{
-        button.disabled = false;
+        trigger.disabled = false;
       }}
     }}
 
@@ -245,34 +325,34 @@ def _html_page(version: str) -> bytes:
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "failed to load entries");
       root.replaceChildren();
+      otpButtons.length = 0;
       for (const entry of data.entries) {{
         const row = document.createElement("div");
         row.className = "row";
         row.addEventListener("mouseenter", () => row.classList.add("is-hover"));
         row.addEventListener("mouseleave", () => row.classList.remove("is-hover"));
 
-        const name = document.createElement("div");
-        name.className = "name";
-        name.textContent = entry.id;
+        const keyCell = document.createElement("div");
+        keyCell.className = "col-key";
+        keyCell.textContent = entry.key ?? entry.id.split(".")[0] ?? "";
 
-        const userBtn = document.createElement("button");
-        userBtn.type = "button";
-        userBtn.textContent = "User";
-        userBtn.addEventListener("click", () => copyValue(entry.id, "username", userBtn, row));
+        const userCell = document.createElement("button");
+        userCell.type = "button";
+        userCell.className = "col-username";
+        userCell.textContent = entry.username ?? entry.id.split(".").slice(1).join(".") ?? "";
+        userCell.addEventListener("click", () => copyValue(entry.id, "username", userCell, row));
 
         const pwdBtn = document.createElement("button");
         pwdBtn.type = "button";
+        pwdBtn.className = "btn-pwd";
         pwdBtn.textContent = "Pwd";
         pwdBtn.addEventListener("click", () => copyValue(entry.id, "password", pwdBtn, row));
 
         const otpBtn = document.createElement("button");
         otpBtn.type = "button";
+        otpBtn.className = "btn-otp";
         otpBtn.textContent = "OTP";
         otpBtn.addEventListener("click", () => copyValue(entry.id, "otp", otpBtn, row));
-
-        const userSlot = document.createElement("div");
-        userSlot.className = "btn-slot";
-        userSlot.append(userBtn);
 
         const pwdSlot = document.createElement("div");
         pwdSlot.className = "btn-slot";
@@ -282,11 +362,13 @@ def _html_page(version: str) -> bytes:
         otpSlot.className = "btn-slot";
         if (entry.has_otp) {{
           otpSlot.append(otpBtn);
+          otpButtons.push(otpBtn);
         }}
 
-        row.append(name, userSlot, pwdSlot, otpSlot);
+        row.append(keyCell, userCell, pwdSlot, otpSlot);
         root.append(row);
       }}
+      applyOtpButtonColors(new Date().getSeconds());
     }}
 
     loadEntries().catch((err) => setStatus(err.message || String(err), true));
@@ -329,7 +411,19 @@ class CotpWebHandler(BaseHTTPRequestHandler):
                 try:
                     entries_payload.append(summarize_entry_ref(self.vault_data, ref))
                 except EntryRefError as exc:
-                    entries_payload.append({"id": ref, "has_otp": False, "error": str(exc)})
+                    try:
+                        key, username = parse_entry_ref(ref)
+                    except EntryRefError:
+                        key, username = "", ref
+                    entries_payload.append(
+                        {
+                            "id": ref,
+                            "key": key,
+                            "username": username,
+                            "has_otp": False,
+                            "error": str(exc),
+                        }
+                    )
             self._send_json(HTTPStatus.OK, {"entries": entries_payload})
             return
         self._send_json(HTTPStatus.NOT_FOUND, {"error": "not found"})
