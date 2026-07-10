@@ -247,6 +247,10 @@ pytest
 ruff check .
 ```
 
+## Disclaimer
+
+This software is provided **"as is"** without warranty of any kind. The authors and contributors accept **no liability** for any loss, damage, or security incident arising from its use. See the [MIT License](LICENSE).
+
 ## Community
 
 - [Contributing](CONTRIBUTING.md)

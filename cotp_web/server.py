@@ -144,6 +144,12 @@ def _html_page(version: str) -> bytes:
     button:disabled {{ opacity: 0.5; cursor: not-allowed; }}
     .msg {{ min-height: 1.25rem; font-size: 0.85rem; color: color-mix(in srgb, currentColor 55%, transparent); }}
     .msg.err {{ color: #c0392b; }}
+    .disclaimer {{
+      margin: 1.5rem 0 0;
+      font-size: 0.75rem;
+      line-height: 1.35;
+      color: color-mix(in srgb, currentColor 50%, transparent);
+    }}
   </style>
 </head>
 <body>
@@ -164,6 +170,7 @@ def _html_page(version: str) -> bytes:
     <div id="entries"></div>
   </main>
   <p id="status" class="msg" aria-live="polite"></p>
+  <p class="disclaimer">Provided &ldquo;as is&rdquo; without warranty. Authors accept no liability for use.</p>
   <script>
     const statusEl = document.getElementById("status");
     const secondEl = document.getElementById("second");
