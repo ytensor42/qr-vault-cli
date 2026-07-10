@@ -3,9 +3,9 @@
 [![CI](https://github.com/ytensor42/qr-vault-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/ytensor42/qr-vault-cli/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-**저장소:** [**qr-vault-cli**](https://github.com/ytensor42/qr-vault-cli) — **GitHub 소스**로 설치 (아래 참고). CLI 명령: **`cotp`**.
+**저장소:** [**qr-vault-cli**](https://github.com/ytensor42/qr-vault-cli) — **GitHub 소스**로 설치 (아래 참고). 명령: **`cotp`** (CLI), **`cotp-web`** (로컬 웹 UI).
 
-짧은 이름 **cotp** — `qr-vault.yaml`, PNG QR, TOTP, 랜덤 비밀번호를 다룹니다.
+짧은 이름 **cotp** — `qr-vault.yaml`, PNG QR, TOTP, 랜덤 비밀번호를 다룹니다. **`cotp-web`** 은 브라우저에서 vault 엔트리의 비밀번호·OTP를 클립보드로 복사하는 간단한 로컬 웹 UI입니다.
 
 (영문 문서: [README.md](README.md))
 
@@ -26,7 +26,7 @@
 
 | 키 | 의미 |
 |----|------|
-| `vault_path` | `qr-vault.yaml` 경로. **`get`** / **`put`** 에서 사용. 미설정 시 둘 다 기본값 `~/.config/cotp/qr-vault.yaml` (또는 `$XDG_CONFIG_HOME/cotp/qr-vault.yaml`)을 사용합니다. |
+| `vault_path` | `qr-vault.yaml` 경로. **`get`** / **`put`** / **`cotp-web`** 에서 사용. 미설정 시 `~/.config/cotp/qr-vault.yaml` (또는 `$XDG_CONFIG_HOME/cotp/qr-vault.yaml`). |
 | `qr_image_dir` | **`put`** / **`read`** 에서 `-f` 생략 시 기본 PNG 폴더. 생략 시 `~/Downloads/Screenshots` |
 
 ## 명령
@@ -88,6 +88,46 @@ cotp read -f ~/Downloads/Screenshots/cap.png
 cotp random
 ```
 
+## `cotp-web` — 로컬 웹 UI (클립보드)
+
+**localhost 전용** 미니 서버. YAML에 적어 둔 vault 엔트리를 나열하고, **Pwd** / **OTP** 버튼으로 클립보드에 복사합니다. 시드·비밀번호는 HTML이나 목록 API에 **노출되지 않고**, 버튼을 눌렀을 때만 서버에서 받습니다.
+
+### 기능
+
+- 엔트리 목록 YAML + `COTP_CONFIG` 의 **`vault_path`** ( `cotp` 와 동일).
+- 화면: `cotp-web v<version>` · 현재 **초**(상단 고정) · 엔트리별 **Pwd** / **OTP**.
+- seed 가 없으면 **OTP** 버튼 숨김; **Pwd** 열 위치는 다른 행과 동일.
+- 마우스 hover 노란색 하이라이트; 복사 성공 시 잠깐 녹색 플래시.
+- 포그라운드: `==> 127.0.0.1:<port>  until CTRL-C` · 백그라운드 실행 선택 시 **1시간** 후 자동 종료.
+
+### 엔트리 YAML (`cotp-web.yaml`)
+
+vault 와 같은 폴더에 두는 것을 권장합니다. 예시: [`cotp_web/entries.example.yaml`](cotp_web/entries.example.yaml).
+
+```yaml
+test:
+- username: admin
+- username: alica
+github:
+- username: deepsolo
+```
+
+top-level key = vault **KEY**, 각 항목에 **`username`**. 매칭은 `key.username` (첫 `.` 만 구분).
+
+**경로:** 파일명만 (`cotp-web.yaml`) → **vault 폴더**에서 검색. `./`, `~/`, `dir/` 등 prefix 가 있으면 OS 경로 먼저, 없으면 vault 폴더.
+
+### 실행
+
+```bash
+cotp-web cotp-web.yaml
+cotp-web cotp-web.yaml --vault ~/path/to/qr-vault.yaml   # 선택: vault 경로 덮어쓰기
+cotp-web cotp-web.yaml --port 8765
+```
+
+기본 `http://127.0.0.1:8765`, **127.0.0.1** 만 바인딩.
+
+개발: editable 설치 후 `python -m cotp_web cotp-web.yaml`.
+
 ## 다른 Mac에서 설치하기
 
 **PyPI가 아니라 GitHub**에서 설치합니다. 다른 Mac에 올리기 전에 변경 사항을 **GitHub에 push** 하세요.
@@ -99,7 +139,7 @@ brew install zbar git
 python3 --version   # 3.11 이상
 ```
 
-### 2. 권장: `install.sh` (`~/bin/cotp`)
+### 2. 권장: `install.sh` (`~/bin/cotp`, `~/bin/cotp-web`)
 
 ```bash
 git clone https://github.com/ytensor42/qr-vault-cli.git
@@ -115,7 +155,7 @@ cd qr-vault-cli
 
 1. 사전 검사 후 **`~/.config/cotp/config.yaml`** 생성.
 2. **`~/.cotp/venv`** + `cotp-cli` (폴더에 `pyproject.toml` 있으면 **로컬 빌드**, 없으면 GitHub).
-3. **`~/bin/cotp`** 설치 후 자동 검증.
+3. **`~/bin/cotp`** 와 **`~/bin/cotp-web`** 설치 후 자동 검증.
 
 **다른 Mac:** 이 저장소 폴더를 통째로 복사한 뒤 그 안에서 `./install.sh` 만 실행해도 됩니다 (GitHub 불필요).
 
@@ -131,7 +171,7 @@ python3 -m venv ~/.cotp/venv
 ~/.cotp/venv/bin/pip install "cotp-cli @ git+https://github.com/ytensor42/qr-vault-cli.git"
 ```
 
-`~/bin/cotp` 래퍼는 `install.sh` 를 참고하세요.
+`~/bin/cotp` · `~/bin/cotp-web` 래퍼는 `install.sh` 를 참고하세요.
 
 ### 4. 설정 · vault
 
@@ -140,7 +180,7 @@ python3 -m venv ~/.cotp/venv
 | **`vault_path`** | `~/.config/cotp/qr-vault.yaml` |
 | **`qr_image_dir`** | `~/Downloads/Screenshots` |
 
-기존 Mac의 **`qr-vault.yaml`** 을 새 Mac으로 복사합니다.
+기존 Mac의 **`qr-vault.yaml`** 과 **`cotp-web.yaml`** (웹 UI용)을 새 Mac vault 폴더로 복사합니다.
 
 ```bash
 chmod 600 ~/.config/cotp/qr-vault.yaml
@@ -149,9 +189,11 @@ chmod 600 ~/.config/cotp/qr-vault.yaml
 ### 5. 확인
 
 ```bash
-ls -la ~/bin/cotp ~/.cotp/venv/bin/python
+ls -la ~/bin/cotp ~/bin/cotp-web ~/.cotp/venv/bin/python
 cotp --help
+cotp-web --help
 cotp get tp00 admin
+cotp-web cotp-web.yaml   # vault 폴더의 엔트리 YAML
 ```
 
 **`~/.cotp/venv/bin/cotp`만 있고 `~/bin/cotp`가 없을 때** (예: 예전 `unexpected venv python path` 오류 후):
@@ -162,7 +204,7 @@ mkdir -p ~/bin
 # 또는: export PATH="$HOME/.cotp/venv/bin:$PATH"  (config는 COTP_CONFIG=~/.config/cotp/config.yaml)
 ```
 
-**`~/bin/cotp`가 없을 때:** 설치가 끝나지 않은 것입니다. `./install.sh --verify` 로 상태 확인. 성공 메시지가 없으면 `./install.sh --preflight` 출력을 보고 `brew install zbar git python@3.12` 후 재시도:
+**`~/bin/cotp` 또는 `~/bin/cotp-web`가 없을 때:** 설치가 끝나지 않은 것입니다. `./install.sh --verify` 로 상태 확인. 성공 메시지가 없으면 `./install.sh --preflight` 출력을 보고 `brew install zbar git python@3.12` 후 재시도:
 
 ```bash
 rm -rf ~/.cotp ~/.local/share/cotp

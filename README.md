@@ -3,9 +3,9 @@
 [![CI](https://github.com/ytensor42/qr-vault-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/ytensor42/qr-vault-cli/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-**Repository:** [**qr-vault-cli**](https://github.com/ytensor42/qr-vault-cli) — install from **GitHub source** (see below). CLI command: **`cotp`**.
+**Repository:** [**qr-vault-cli**](https://github.com/ytensor42/qr-vault-cli) — install from **GitHub source** (see below). Commands: **`cotp`** (CLI) and **`cotp-web`** (local web UI).
 
-**cotp** is a short CLI for working with `qr-vault.yaml`, PNG QR codes, TOTP, and random passwords.
+**cotp** is a short CLI for working with `qr-vault.yaml`, PNG QR codes, TOTP, and random passwords. **`cotp-web`** is a minimal localhost web UI to copy vault passwords and OTP codes to the clipboard.
 
 (Korean: [README-ko.md](README-ko.md))
 
@@ -26,7 +26,7 @@ Optional YAML (see repository [`config.example.yaml`](config.example.yaml)):
 
 | Key | Meaning |
 |-----|---------|
-| `vault_path` | Path to `qr-vault.yaml`. Used by **`get`** and **`put`**. If omitted, both commands use the default `~/.config/cotp/qr-vault.yaml` (or `$XDG_CONFIG_HOME/cotp/qr-vault.yaml`). |
+| `vault_path` | Path to `qr-vault.yaml`. Used by **`get`**, **`put`**, and **`cotp-web`**. If omitted, defaults to `~/.config/cotp/qr-vault.yaml` (or `$XDG_CONFIG_HOME/cotp/qr-vault.yaml`). |
 | `qr_image_dir` | Default directory for **`put`** / **`read`** when `-f` is omitted (newest `.png` there), and the base for relative `-f` paths. If omitted, defaults to `~/Downloads/Screenshots`. |
 
 ## Commands
@@ -99,6 +99,46 @@ One line: **`<plain> <base64>`** — 12-character plain text, then standard Base
 cotp random
 ```
 
+## `cotp-web` — local web UI (clipboard)
+
+A small **localhost-only** server that lists selected vault entries and copies **password** or **TOTP** to the clipboard when you click a button. Seeds and passwords are **not** included in the HTML or the initial API response; values are fetched only when you press **Pwd** or **OTP**.
+
+### Features
+
+- Entry list from a YAML file (see below); vault path from **`COTP_CONFIG`** / `vault_path` (same as `cotp`).
+- Page layout: `cotp-web v<version>`, current **second** (sticky header), then one row per entry with **Pwd** / **OTP** buttons.
+- **OTP** button is shown only when the vault entry has a usable seed; **Pwd** stays in the same column on every row.
+- Hover highlight (yellow); brief green flash on successful copy.
+- Foreground: `==> 127.0.0.1:<port>  until CTRL-C` · optional background run for **1 hour** (interactive prompt).
+
+### Entry list YAML (`cotp-web.yaml`)
+
+Place the file next to your vault (recommended) or pass a path. Example: [`cotp_web/entries.example.yaml`](cotp_web/entries.example.yaml).
+
+```yaml
+test:
+- username: admin
+- username: alica
+github:
+- username: deepsolo
+```
+
+Top-level keys are vault **KEY**s; each list item needs **`username`**. Rows are matched as `key.username` (first `.` only).
+
+**Path resolution:** a bare filename (e.g. `cotp-web.yaml`) is looked up in the **vault directory**. With a path prefix (`./x`, `~/x`, `dir/x`), the OS path is tried first, then the vault directory.
+
+### Run
+
+```bash
+cotp-web cotp-web.yaml
+cotp-web cotp-web.yaml --vault ~/path/to/qr-vault.yaml   # optional override
+cotp-web cotp-web.yaml --port 8765
+```
+
+Open `http://127.0.0.1:8765` (default). Binds to **127.0.0.1** only.
+
+Development: `python -m cotp_web cotp-web.yaml` from an editable install.
+
 ## Install on another Mac
 
 Install from the **GitHub repository** (not PyPI). Push your latest changes to GitHub before installing on another machine.
@@ -112,20 +152,24 @@ python3 --version   # must be 3.11 or newer
 
 If Python is older than 3.11: `brew install python@3.12` and ensure `python3` points at it.
 
-### 2. Recommended: `install.sh` (puts `cotp` in `~/bin`)
+### 2. Recommended: `install.sh` (puts `cotp` and `cotp-web` in `~/bin`)
 
 ```bash
 git clone https://github.com/ytensor42/qr-vault-cli.git
 cd qr-vault-cli
-./install.sh
+./install.sh --preflight    # optional: check prerequisites only
+./install.sh --no-cleanup   # keep clone (developers)
+./install.sh --verify       # verify existing install
 ```
 
 The script will:
 
-1. Create a fresh **private venv** at **`~/.cotp/venv`** and install **`cotp-cli` from GitHub** (`main` branch).
+1. Create a fresh **private venv** at **`~/.cotp/venv`** and install **`cotp-cli`** (local tree if `pyproject.toml` is present, else GitHub `main`).
 2. Create **`~/.config/cotp/config.yaml`** if missing (default `vault_path` and `qr_image_dir`).
-3. Install **`~/bin/cotp`** (wrapper → venv Python + `COTP_CONFIG`).
+3. Install **`~/bin/cotp`** and **`~/bin/cotp-web`** (wrappers → venv Python + `COTP_CONFIG`).
 4. Optionally **delete** the clone folder when finished (see script output).
+
+**Success line:** `cotp install: === cotp is installed correctly on this machine ===`
 
 **Unpublished changes on this Mac only** (install from the working tree, not GitHub):
 
@@ -147,7 +191,7 @@ python3 -m venv ~/.cotp/venv
 ~/.cotp/venv/bin/pip install "cotp-cli @ git+https://github.com/ytensor42/qr-vault-cli.git"
 ```
 
-Add a `~/bin/cotp` wrapper that runs `~/.cotp/venv/bin/python -m cotp_cli "$@"` and set `COTP_CONFIG=~/.config/cotp/config.yaml` (see `install.sh`).
+Add `~/bin/cotp` and `~/bin/cotp-web` wrappers (see `install.sh`).
 
 ### 4. Configuration
 
@@ -162,7 +206,7 @@ Add a `~/bin/cotp` wrapper that runs `~/.cotp/venv/bin/python -m cotp_cli "$@"` 
 
 ### 5. Copy your vault
 
-Copy **`qr-vault.yaml`** (or the path in `vault_path`) from the old Mac to the new one.
+Copy **`qr-vault.yaml`** (and **`cotp-web.yaml`** if you use the web UI) to the new Mac — same directory as `vault_path` is easiest.
 
 ```bash
 chmod 600 ~/.config/cotp/qr-vault.yaml
@@ -171,12 +215,14 @@ chmod 600 ~/.config/cotp/qr-vault.yaml
 ### 6. Verify
 
 ```bash
-ls -la ~/bin/cotp ~/.cotp/venv/bin/python
+ls -la ~/bin/cotp ~/bin/cotp-web ~/.cotp/venv/bin/python
 cotp --help
-cotp get tp00 admin          # or: cotp -l your-label
+cotp-web --help
+cotp get tp00 admin
+cotp-web cotp-web.yaml    # if cotp-web.yaml is in the vault directory
 ```
 
-If **`~/bin/cotp` is missing**, the install did not finish. You should see `cotp install: install complete:` and `cotp command: /Users/you/bin/cotp`. Retry:
+If **`~/bin/cotp` or `~/bin/cotp-web` is missing**, the install did not finish. Retry:
 
 ```bash
 rm -rf ~/.cotp ~/.local/share/cotp

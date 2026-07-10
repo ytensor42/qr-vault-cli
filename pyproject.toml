@@ -46,6 +46,10 @@ dev = [
 
 [project.scripts]
 cotp = "cotp_cli.main:main"
+cotp-web = "cotp_web.__main__:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["cotp_cli", "cotp_web"]
 
 [tool.ruff]
 line-length = 100

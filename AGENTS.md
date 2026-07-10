@@ -86,8 +86,77 @@
 |------|------|
 | `cotp_cli/main.py` | argparse, `put` / `get` / `read` / `random`, `run_query`, `run_save_from_png`, 경로·vault 로직 대부분 |
 | `cotp_cli/config.py` | 선택 YAML 설정 로드 (`COTP_CONFIG`, XDG 기본 경로), `vault_path_for_put` |
+| `cotp_web/` | 로컬 웹 UI (`cotp-web`): vault 엔트리 password/OTP 클립보드 복사. `install.sh` 가 `~/bin/cotp-web` 설치 |
 | `tests/` | `pytest`; vault·클립보드는 `monkeypatch`로 고립 |
-| `pyproject.toml` | 패키지 메타, `[project.scripts] cotp = cotp_cli.main:main` |
+| `pyproject.toml` | 패키지 메타, `[project.scripts]` `cotp`, `cotp-web` |
+
+---
+
+## qr-vault.yaml 스키마
+
+`get` / `put` 이 읽고 쓰는 vault 파일. 경로는 [`config.yaml`](#설정-파일-cotp_cliconfigpy) 의 **`vault_path`** (미설정 시 `~/.config/cotp/qr-vault.yaml`). 파일 권한은 **`chmod 600`** 권장.
+
+### 전체 구조
+
+최상위는 **YAML mapping(객체)** 하나. 각 **top-level key** 는 vault에서 말하는 **cluster key**(CLI positional **KEY**, 예: `tc00`, `github`)이고, 값은 **엔트리 1건(dict)** 또는 **엔트리 목록(list of dict)** 이다.
+
+```yaml
+# 권장(canonical): key 아래 list — 같은 KEY에 username 이 여러 개일 때
+github:
+- seed: ''                    # TOTP 없음(비밀번호만)
+  username: alice
+  password: cGFzc3dvcmQx        # 표준 Base64(UTF-8 평문)
+  labels:
+  - prod
+- seed: JBSWY3DPEHPK3PXP
+  username: bob
+  password: ''
+  labels: []
+
+# legacy(읽기 호환): key 아래 dict 1건 — 쓰기 시 list 1건으로 promote
+oracle:
+  seed: JBSWY3DPEHPK3PXP
+  username: carol@example.com
+  password: cGFzc3dvcmQx
+  labels:
+  - oracle
+  - carol@example.com
+```
+
+`cotp` 가 새로 쓰거나 갱신할 때는 **list 형식**으로 저장한다(`merge_qr_vault_yaml` → `yaml.safe_dump`).
+
+### top-level key (cluster key)
+
+| 항목 | 설명 |
+|------|------|
+| **이름** | 임의의 짧은 문자열(클러스터·서비스·사이트 식별자). `get`/`put` 의 positional **KEY** 와 동일. |
+| **값 타입** | **list of entry** (권장) 또는 **entry dict 1건** (legacy). list 가 아니고 entry 도 아니면 오류. |
+| **다중 엔트리** | 같은 KEY 아래 **서로 다른 username** 은 list 에 **append**. `put` 시 KEY+username+labels 가 정확히 1건일 때만 그 슬롯 갱신. |
+| **식별** | 엔트리를 구분하는 3요소: **KEY + username + labels(집합)**. labels 가 다르면 같은 KEY·username 아래 **별도 슬롯**. |
+
+### 엔트리 필드 (dict)
+
+유효 엔트리는 dict 이며 **`seed` 또는 `username` 키** 가 있어야 한다(`_looks_like_vault_entry`). `put` 이 만드는 엔트리는 네 필드를 모두 가진다.
+
+| 필드 | 타입 | 필수 | 설명 |
+|------|------|------|------|
+| **`seed`** | string | 사실상 항상 | **Base32 TOTP 시크릿**(QR `otpauth://` 에서 추출). `get` 으로 OTP를 내려면 **비어 있지 않은 문자열**이어야 함. QR 없이 비밀번호만 저장할 때는 **`''`(빈 문자열)**. `put -f` 없이 메타만 갱신하면 **기존 seed 유지**; 신규 KEY 생성 시 seed 없으면 `''`. |
+| **`username`** | string | 예 | 로그인 계정·이메일 등. `get`/`put` 매칭에 사용. legacy 로 **list** 로 저장된 경우 **첫 원소만** 사용(`first_username_from_entry`). |
+| **`password`** | string | 예(빈 문자열 가능) | **표준 Base64로 인코딩된 UTF-8 평문** 비밀번호. `get` 시 디코드해 클립보드에 복사(`decode_vault_password_for_clipboard`). 없으면 `''`. `put -p` 대화형 입력·`cotp random` 출력의 Base64 절을 그대로 넣는 것을 권장. `put` 에서 `password=None` 이면 **기존 값 유지**. |
+| **`labels`** | list of string | 예(빈 list 가능) | 사용자가 **`put -l` / `--labels`** 로 준 **추가 태그만** 저장(`labels_for_vault_entry`). **KEY·username 은 자동으로 넣지 않음**. `get -l` 매칭·`put` identity 판별에 사용. 중복·공백은 정규화되어 저장. 없으면 `[]` 로 취급. |
+
+### 읽기·쓰기 규칙 요약
+
+| 상황 | 동작 |
+|------|------|
+| legacy dict 1건 | 읽기·매칭 가능. 갱신·append 시 **list 로 promote** (`[기존]` 또는 `[기존, 신규]`). |
+| 신규 KEY | `data[KEY] = [entry]` 로 list 1건 생성. |
+| `put -f` (QR) | KEY+username+**labels 집합** 일치 1건 → seed(및 선택 password) 갱신; username 같고 labels 다름 → **거부** + hints. |
+| `put` 메타만 (`-f` 없음) | KEY+**username** 일치 1건 → labels/password 갱신, **seed 유지** (`match_identity_labels=False`). |
+| `get` KEY 만 | 해당 KEY 의 **첫 슬롯**만 사용(`seed_for_cluster_name_only`) — KEY 아래 엔트리가 여러 개면 **username 지정 권장**. |
+| `get` + 빈 seed | TOTP 생성 불가; password 가 있으면 클립보드만 동작할 수 있음. |
+
+구현: `merge_qr_vault_yaml`, `_iter_slots_under_key`, `entry_matches_identity`, `find_get_matches` (`cotp_cli/main.py`).
 
 ---
 
@@ -102,7 +171,7 @@
 - **`-f` 있음:** `resolve_png_path` — QR PNG에서 시드 추출·stdout 출력·vault merge (`match_identity_labels=True`, key+username+labels 일치 1건).
 - **`-f` 없음:** `run_put_metadata_only` — PNG·폴더 스캔 없음. **KEY+username 필수**. vault는 `default_vault_path()`. **key+username** 으로 1건 찾아 **labels/password** 만 갱신, **seed 유지**. 신규 키면 seed `""` 로 생성(QR 없는 항목).
 - vault 갱신 대상: 설정에 **`vault_path`** 가 있으면 **그 파일**에 merge; 없으면 **`~/.config/cotp/qr-vault.yaml`** (config 기본). **`get`** 도 동일.
-- **vault 스키마 (enhance):** top-level key 아래 **항상 list of entries** (`qr-vault-enhance.yaml` 형식). legacy dict 1건은 읽기·쓰기 시 list로 promote. 같은 key에 **새 username** → list에 **append**; 같은 username + 다른 labels → **거부** (metadata-only `put`은 username만으로 갱신).
+- **vault 스키마:** 위 **[qr-vault.yaml 스키마](#qr-vaultyaml-스키마)** 절. `put` identity = KEY+username+labels(집합) 정확 1건; 메타-only `put` 은 username 기준 1건.
 - **`labels`**: `labels_for_vault_entry` — **key·username 은 라벨로 저장하지 않음**. **`put -l` / `--labels`** (콤마 구분)만 저장(중복 제거). PNG 파일명 접미사는 라벨로 쓰지 않음. 라벨 없으면 빈 리스트.
 - **업데이트 조건** (`merge_qr_vault_yaml`): vault 키 **`<key>`** 아래에서 **username·labels(집합)** 이 모두 일치하는 엔트리가 **정확히 1개**일 때만 seed/password 갱신. 0개면 키가 비어 있을 때만 신규 생성; 키는 있는데 일치 항목 없으면 덮어쓰지 않고 **`VaultUpdateError`** + stderr **hints**(같은 key / username 일치 / labels 겹침 등 관련 엔트리 목록). 2개 이상 exact match도 hints로 전부 표시.
 - **`cotp put <key> <username> [-l …] [-f png]`** — **`-f` 생략** = 메타데이터만(기존 seed 유지). implicit put: **`<key> <username>`** + **`-f` 또는 `-p`**.
@@ -157,4 +226,4 @@ YAML 깨짐·잘못된 타입은 stderr 경고 후 **기본 경로 동작**으�
 ## 에이전트에게 (불변 원칙)
 
 - 시드·비밀번호·TOTP를 의도하지 않은 로그에 남기지 않는다.
-- 동작 변경 시 **README(영/한)·CHANGELOG·이 AGENTS** 의 CLI/출력 설명을 함께 갱신하는 것이 좋다.
+- 동작 변경 시 **README(영/한)·CHANGELOG·이 AGENTS** 의 CLI/출력·**vault 스키마** 설명을 함께 갱신하는 것이 좋다.
