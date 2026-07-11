@@ -51,6 +51,9 @@ cotp-web = "cotp_web.__main__:main"
 [tool.hatch.build.targets.wheel]
 packages = ["cotp_cli", "cotp_web"]
 
+[tool.hatch.build.targets.wheel.force-include]
+"cotp_web/favicon-32.png" = "cotp_web/favicon-32.png"
+
 [tool.ruff]
 line-length = 100
 target-version = "py311"

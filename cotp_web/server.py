@@ -5,11 +5,16 @@ from __future__ import annotations
 import json
 import re
 import threading
+from functools import cache
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from importlib.resources import files
+from io import BytesIO
 from pathlib import Path
 from typing import Any
-from urllib.parse import unquote
+from urllib.parse import quote, unquote, urlparse
+
+from PIL import Image
 
 from cotp_web import package_version
 from cotp_web.vault import (
@@ -28,6 +33,24 @@ _COPY_PATH = re.compile(r"^/api/copy/(password|otp|username)/(.+)$")
 REPO_URL = "https://github.com/ytensor42/qr-vault-cli"
 
 
+@cache
+def favicon_png() -> bytes:
+    return files("cotp_web").joinpath("favicon-32.png").read_bytes()
+
+
+@cache
+def favicon_ico() -> bytes:
+    image = Image.open(BytesIO(favicon_png()))
+    buffer = BytesIO()
+    image.save(buffer, format="ICO", sizes=[(32, 32)])
+    return buffer.getvalue()
+
+
+def favicon_href(version: str, *, ico: bool = False) -> str:
+    name = "favicon.ico" if ico else "favicon-32.png"
+    return f"/{name}?v={quote(version, safe='')}"
+
+
 def format_serving_message(host: str, port: int, *, until_ctrl_c: bool = False) -> str:
     base = f"==> {host}:{port}"
     if until_ctrl_c:
@@ -42,6 +65,9 @@ def _html_page(version: str) -> bytes:
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>cotp-web v{version}</title>
+  <link rel="icon" href="{favicon_href(version)}" type="image/png" sizes="32x32">
+  <link rel="shortcut icon" href="{favicon_href(version, ico=True)}" type="image/x-icon">
+  <link rel="apple-touch-icon" href="{favicon_href(version)}">
   <style>
     :root {{ color-scheme: light dark; }}
     body {{
@@ -454,6 +480,9 @@ class CotpWebHandler(BaseHTTPRequestHandler):
     def log_message(self, format: str, *args: object) -> None:
         return
 
+    def _path(self) -> str:
+        return urlparse(self.path).path
+
     def _send_json(self, status: int, payload: dict[str, Any]) -> None:
         body = json.dumps(payload).encode("utf-8")
         self.send_response(status)
@@ -469,8 +498,23 @@ class CotpWebHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _send_bytes(self, body: bytes, content_type: str) -> None:
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-cache")
+        self.end_headers()
+        self.wfile.write(body)
+
     def do_GET(self) -> None:
-        if self.path == "/" or self.path.startswith("/?"):
+        path = self._path()
+        if path == "/favicon-32.png":
+            self._send_bytes(favicon_png(), "image/png")
+            return
+        if path == "/favicon.ico":
+            self._send_bytes(favicon_ico(), "image/x-icon")
+            return
+        if path == "/" or self.path.startswith("/?"):
             self._send_html(_html_page(self.app_version))
             return
         if self.path == "/api/entries":
@@ -520,7 +564,23 @@ class CotpWebHandler(BaseHTTPRequestHandler):
         self._send_json(HTTPStatus.OK, {"value": value})
 
     def do_HEAD(self) -> None:
-        if self.path == "/":
+        path = self._path()
+        if path == "/favicon-32.png":
+            body = favicon_png()
+            content_type = "image/png"
+        elif path == "/favicon.ico":
+            body = favicon_ico()
+            content_type = "image/x-icon"
+        else:
+            body = None
+        if body is not None:
+            self.send_response(HTTPStatus.OK)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-cache")
+            self.end_headers()
+            return
+        if path == "/":
             self.send_response(HTTPStatus.OK)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.end_headers()

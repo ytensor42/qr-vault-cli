@@ -20,7 +20,7 @@ from cotp_web.process import (
     remove_pid_file,
     stop_existing_background,
 )
-from cotp_web.server import make_handler, run_server
+from cotp_web.server import favicon_ico, favicon_png, make_handler, run_server
 from cotp_web.vault import (
     EntryRefError,
     load_entry_refs,
@@ -307,6 +307,22 @@ def test_api_does_not_leak_secrets_in_entries_list(tmp_path: Path) -> None:
     thread.start()
     try:
         conn = HTTPConnection("127.0.0.1", port, timeout=5)
+        conn.request("GET", "/favicon.ico?v=1")
+        res = conn.getresponse()
+        ico_body = res.read()
+        assert res.status == 200
+        assert res.getheader("Content-Type") == "image/x-icon"
+        assert ico_body == favicon_ico()
+        assert ico_body.startswith(b"\x00\x00\x01\x00")
+
+        conn.request("GET", "/favicon-32.png")
+        res = conn.getresponse()
+        favicon_body = res.read()
+        assert res.status == 200
+        assert res.getheader("Content-Type") == "image/png"
+        assert favicon_body == favicon_png()
+        assert favicon_body.startswith(b"\x89PNG")
+
         conn.request("GET", "/api/entries")
         res = conn.getresponse()
         payload = json.loads(res.read().decode())
