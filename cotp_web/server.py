@@ -199,7 +199,6 @@ def _html_page(version: str) -> bytes:
       opacity: 0.5;
       cursor: not-allowed;
     }}
-    .entries-table button.btn-pwd,
     .entries-table button.btn-otp {{
       font: inherit;
       width: 100%;
@@ -213,16 +212,27 @@ def _html_page(version: str) -> bytes:
       font-weight: 600;
       font-size: 0.8rem;
     }}
-    button:hover {{ background: color-mix(in srgb, currentColor 12%, transparent); }}
+    button:not(.btn-pwd):not(.btn-otp):not(.col-username):hover {{
+      background: color-mix(in srgb, currentColor 12%, transparent);
+    }}
     button:disabled {{ opacity: 0.5; cursor: not-allowed; }}
-    button.btn-pwd {{
-      background: #ea580c;
-      border-color: #ea580c;
+    .entries-table button.btn-pwd {{
+      font: inherit;
+      width: 100%;
+      box-sizing: border-box;
+      padding: 0.35rem 0;
+      border-radius: 0.35rem;
+      cursor: pointer;
+      white-space: nowrap;
+      font-weight: 600;
+      font-size: 0.8rem;
+      background: light-dark(#ea580c, #d96655);
+      border: 1px solid light-dark(#ea580c, #d96655);
       color: #ffffff;
     }}
-    button.btn-pwd:hover {{
-      background: #c2410c;
-      border-color: #c2410c;
+    .entries-table button.btn-pwd:hover {{
+      background: light-dark(#c2410c, #c45747);
+      border-color: light-dark(#c2410c, #c45747);
     }}
     button.btn-otp {{
       color: #ffffff;
