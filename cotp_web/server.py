@@ -146,19 +146,23 @@ def _html_page(version: str) -> bytes:
       text-align: left;
       padding: 0.35rem 0.4rem;
       border-radius: 0.35rem;
-      border: 1px solid #2563eb;
-      background: transparent;
-      color: #000000;
+      border: 1px solid light-dark(#2563eb, #60a5fa);
+      background: light-dark(transparent, #2c2c2e);
+      color: light-dark(#000000, #f2f2f7);
       cursor: pointer;
-      transition: background-color 0.15s ease, border-color 0.15s ease;
+      transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
     }}
     .col-username:hover {{
-      background: color-mix(in srgb, #2563eb 10%, transparent);
-      border-color: #1d4ed8;
+      background: light-dark(
+        color-mix(in srgb, #2563eb 10%, transparent),
+        color-mix(in srgb, #60a5fa 16%, #2c2c2e)
+      );
+      border-color: light-dark(#1d4ed8, #93c5fd);
     }}
     .row.is-hover .col-username,
     .row.is-hover .col-username:hover {{
-      background: #ffffff;
+      background: light-dark(#ffffff, #1c1c1e);
+      color: light-dark(#000000, #f2f2f7);
     }}
     .col-username:disabled {{
       opacity: 0.5;
