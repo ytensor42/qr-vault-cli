@@ -17,7 +17,7 @@ import yaml
 from PIL import Image
 
 from cotp_cli import __version__
-from cotp_cli.config import load_cotp_settings, vault_path_for_put
+from cotp_cli.config import default_vault_path_from_config, load_cotp_settings, vault_path_for_put
 
 _RANDOM_PASSWORD_LENGTH = 12
 _RANDOM_SPECIAL = "!@#$%^&*-_=+"
@@ -504,10 +504,7 @@ def default_cotp_config_dir() -> Path:
 
 
 def default_vault_path() -> Path:
-    s = load_cotp_settings()
-    if s.vault_path is not None:
-        return s.vault_path
-    return default_cotp_config_dir() / "qr-vault.yaml"
+    return default_vault_path_from_config()
 
 
 def load_qr_vault_mapping(path: Path) -> dict:
