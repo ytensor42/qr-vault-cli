@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.6] — 2026-07-10
+
+### Added
+
+- **cotp fill** Chrome extension (`chrome-extension/`): pick an entry in the popup to fill username, password, and OTP on the active tab (Teleport and generic login forms).
+
+### Changed
+
+- `cotp-web`: entry list uses a table layout (account / username / Pwd / OTP columns aligned); no column header row; narrower page width.
+- `cotp-web`: username button padding no longer overridden by Pwd/OTP button styles.
+
 ## [0.7.5] — 2026-07-10
 
 ### Changed
@@ -82,7 +93,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Earlier history: see git log and PyPI release notes.
 
-[Unreleased]: https://github.com/ytensor42/qr-vault-cli/compare/v0.7.5...HEAD
+[Unreleased]: https://github.com/ytensor42/qr-vault-cli/compare/v0.7.6...HEAD
+[0.7.6]: https://github.com/ytensor42/qr-vault-cli/compare/v0.7.5...v0.7.6
 [0.7.5]: https://github.com/ytensor42/qr-vault-cli/compare/v0.7.4...v0.7.5
 [0.7.4]: https://github.com/ytensor42/qr-vault-cli/compare/v0.7.3...v0.7.4
 [0.7.3]: https://github.com/ytensor42/qr-vault-cli/compare/v0.7.2...v0.7.3

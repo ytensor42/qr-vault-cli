@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>cotp fill</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header class="header">
+    <div class="title-row">
+      <span id="status-dot" class="status-dot" title="cotp-web status"></span>
+      <h1>cotp fill</h1>
+    </div>
+    <p id="status" class="status" aria-live="polite">Connecting…</p>
+  </header>
+  <main id="entries" class="entries" aria-label="Vault entries"></main>
+  <footer class="footer">
+    <label class="port-label">
+      Port
+      <input id="port" type="number" min="1" max="65535" value="8765">
+    </label>
+  </footer>
+  <script type="module" src="popup.js"></script>
+</body>
+</html>

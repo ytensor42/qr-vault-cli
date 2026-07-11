@@ -46,7 +46,7 @@ def _html_page(version: str) -> bytes:
     :root {{ color-scheme: light dark; }}
     body {{
       font-family: system-ui, -apple-system, sans-serif;
-      max-width: 42rem;
+      max-width: 29.5rem;
       margin: 0 auto;
       padding: 0 1rem 1.5rem;
       line-height: 1.4;
@@ -100,27 +100,55 @@ def _html_page(version: str) -> bytes:
     }}
     .entries-panel {{
       padding-top: 0.5rem;
+      overflow-x: auto;
     }}
-    .row {{
-      display: grid;
-      grid-template-columns: minmax(0, 0.75fr) minmax(0, 1.25fr) 3.25rem 3.25rem;
-      align-items: center;
-      gap: 0.75rem;
-      margin: 0 -0.5rem;
-      padding: 0.6rem 0.5rem;
-      border-bottom: 1px solid color-mix(in srgb, currentColor 12%, transparent);
-      border-radius: 0.4rem;
+    .entries-table {{
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+    }}
+    .entries-table col.col-account {{ width: 3.5rem; }}
+    .entries-table col.col-user {{ width: 4.55rem; }}
+    .entries-table col.col-pwd {{ width: 1.93rem; }}
+    .entries-table col.col-otp {{ width: 1.93rem; }}
+    .entries-table th {{
+      font-size: 0.72rem;
+      font-weight: 600;
+      color: color-mix(in srgb, currentColor 55%, transparent);
+      text-align: left;
+      padding: 0.35rem 0.4rem;
+      border-bottom: 1px solid color-mix(in srgb, currentColor 14%, transparent);
+    }}
+    .entries-table th.col-action {{
+      text-align: center;
+      padding-left: 0.15rem;
+      padding-right: 0.15rem;
+    }}
+    .entries-table td {{
+      padding: 0.4rem 0.35rem;
+      vertical-align: middle;
+      border-bottom: 1px solid color-mix(in srgb, currentColor 10%, transparent);
+    }}
+    .entries-table td.col-action {{
+      text-align: center;
+      padding-left: 0.15rem;
+      padding-right: 0.15rem;
+    }}
+    .entries-table td.col-user {{
+      padding-left: 0.35rem;
+    }}
+    .entries-table tbody tr {{
       transition: background-color 0.15s ease;
     }}
-    .row.is-hover {{
+    .entries-table tbody tr.is-hover {{
       background: color-mix(in srgb, #ffeb3b 55%, transparent);
     }}
     @media (prefers-color-scheme: dark) {{
-      .row.is-hover {{
+      .entries-table tbody tr.is-hover {{
         background: color-mix(in srgb, #ffd54f 40%, transparent);
       }}
     }}
-    .row.is-copied {{
+    .entries-table tbody tr.is-copied {{
       animation: copy-flash 0.9s ease-out forwards;
     }}
     @keyframes copy-flash {{
@@ -132,19 +160,22 @@ def _html_page(version: str) -> bytes:
       font-weight: 500;
       font-size: 0.85rem;
       color: color-mix(in srgb, currentColor 62%, transparent);
-      word-break: break-all;
-      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }}
     .col-username {{
       font: inherit;
       font-weight: 700;
       font-size: inherit;
-      word-break: break-all;
-      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
       width: 100%;
+      max-width: 100%;
       box-sizing: border-box;
       text-align: left;
-      padding: 0.35rem 0.4rem;
+      padding: 0.35rem 0.4rem 0.35rem 0.55rem;
       border-radius: 0.35rem;
       border: 1px solid light-dark(#2563eb, #60a5fa);
       background: light-dark(transparent, #2c2c2e);
@@ -159,8 +190,8 @@ def _html_page(version: str) -> bytes:
       );
       border-color: light-dark(#1d4ed8, #93c5fd);
     }}
-    .row.is-hover .col-username,
-    .row.is-hover .col-username:hover {{
+    tr.is-hover .col-username,
+    tr.is-hover .col-username:hover {{
       background: light-dark(#ffffff, #1c1c1e);
       color: light-dark(#000000, #f2f2f7);
     }}
@@ -168,11 +199,8 @@ def _html_page(version: str) -> bytes:
       opacity: 0.5;
       cursor: not-allowed;
     }}
-    .btn-slot {{
-      width: 3.25rem;
-      justify-self: end;
-    }}
-    button {{
+    .entries-table button.btn-pwd,
+    .entries-table button.btn-otp {{
       font: inherit;
       width: 100%;
       box-sizing: border-box;
@@ -330,48 +358,74 @@ def _html_page(version: str) -> bytes:
       if (!res.ok) throw new Error(data.error || "failed to load entries");
       root.replaceChildren();
       otpButtons.length = 0;
+
+      if (!data.entries.length) {{
+        const empty = document.createElement("p");
+        empty.className = "msg";
+        empty.textContent = "No entries.";
+        root.append(empty);
+        return;
+      }}
+
+      const table = document.createElement("table");
+      table.className = "entries-table";
+      const colgroup = document.createElement("colgroup");
+      for (const name of ["col-account", "col-user", "col-pwd", "col-otp"]) {{
+        const col = document.createElement("col");
+        col.className = name;
+        colgroup.append(col);
+      }}
+      table.append(colgroup);
+
+      const tbody = document.createElement("tbody");
       for (const entry of data.entries) {{
-        const row = document.createElement("div");
-        row.className = "row";
+        const row = document.createElement("tr");
         row.addEventListener("mouseenter", () => row.classList.add("is-hover"));
         row.addEventListener("mouseleave", () => row.classList.remove("is-hover"));
 
-        const keyCell = document.createElement("div");
+        const keyCell = document.createElement("td");
         keyCell.className = "col-key";
-        keyCell.textContent = entry.key ?? entry.id.split(".")[0] ?? "";
+        const keyText = entry.key ?? entry.id.split(".")[0] ?? "";
+        keyCell.textContent = keyText;
+        keyCell.title = keyText;
 
-        const userCell = document.createElement("button");
-        userCell.type = "button";
-        userCell.className = "col-username";
-        userCell.textContent = entry.username ?? entry.id.split(".").slice(1).join(".") ?? "";
-        userCell.addEventListener("click", () => copyValue(entry.id, "username", userCell, row));
+        const userCell = document.createElement("td");
+        userCell.className = "col-user";
+        const userBtn = document.createElement("button");
+        userBtn.type = "button";
+        userBtn.className = "col-username";
+        const userText = entry.username ?? entry.id.split(".").slice(1).join(".") ?? "";
+        userBtn.textContent = userText;
+        userBtn.title = userText;
+        userBtn.addEventListener("click", () => copyValue(entry.id, "username", userBtn, row));
+        userCell.append(userBtn);
 
+        const pwdCell = document.createElement("td");
+        pwdCell.className = "col-action";
         const pwdBtn = document.createElement("button");
         pwdBtn.type = "button";
         pwdBtn.className = "btn-pwd";
         pwdBtn.textContent = "Pwd";
         pwdBtn.addEventListener("click", () => copyValue(entry.id, "password", pwdBtn, row));
+        pwdCell.append(pwdBtn);
 
-        const otpBtn = document.createElement("button");
-        otpBtn.type = "button";
-        otpBtn.className = "btn-otp";
-        otpBtn.textContent = "OTP";
-        otpBtn.addEventListener("click", () => copyValue(entry.id, "otp", otpBtn, row));
-
-        const pwdSlot = document.createElement("div");
-        pwdSlot.className = "btn-slot";
-        pwdSlot.append(pwdBtn);
-
-        const otpSlot = document.createElement("div");
-        otpSlot.className = "btn-slot";
+        const otpCell = document.createElement("td");
+        otpCell.className = "col-action";
         if (entry.has_otp) {{
-          otpSlot.append(otpBtn);
+          const otpBtn = document.createElement("button");
+          otpBtn.type = "button";
+          otpBtn.className = "btn-otp";
+          otpBtn.textContent = "OTP";
+          otpBtn.addEventListener("click", () => copyValue(entry.id, "otp", otpBtn, row));
+          otpCell.append(otpBtn);
           otpButtons.push(otpBtn);
         }}
 
-        row.append(keyCell, userCell, pwdSlot, otpSlot);
-        root.append(row);
+        row.append(keyCell, userCell, pwdCell, otpCell);
+        tbody.append(row);
       }}
+      table.append(tbody);
+      root.append(table);
       applyOtpButtonColors(new Date().getSeconds());
     }}
 

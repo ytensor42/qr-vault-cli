@@ -1,0 +1,19 @@
+{
+  "manifest_version": 3,
+  "name": "cotp fill",
+  "version": "0.1.0",
+  "description": "Fill login forms from a local cotp-web server (username, password, OTP).",
+  "permissions": ["activeTab", "storage"],
+  "host_permissions": ["http://127.0.0.1/*", "http://localhost/*"],
+  "action": {
+    "default_title": "cotp fill",
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
