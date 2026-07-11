@@ -2,6 +2,8 @@
  * Fill login forms on the active tab (Teleport and generic login pages).
  */
 
+const ext = globalThis.browser ?? globalThis.chrome;
+
 function setNativeValue(element, value) {
   const proto =
     element instanceof HTMLTextAreaElement
@@ -150,7 +152,7 @@ function fillCredentials(credentials) {
   return filled;
 }
 
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+ext.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type !== "COTP_FILL") {
     return false;
   }

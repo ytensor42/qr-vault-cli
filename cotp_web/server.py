@@ -58,7 +58,19 @@ def format_serving_message(host: str, port: int, *, until_ctrl_c: bool = False) 
     return base
 
 
-def _html_page(version: str) -> bytes:
+def _html_page(
+    version: str,
+    *,
+    max_runtime: int | None = None,
+    started_at: float | None = None,
+) -> bytes:
+    max_runtime_js = "null" if max_runtime is None else str(max_runtime)
+    started_at_js = "null" if started_at is None else str(int(started_at * 1000))
+    countdown_markup = (
+        '<span id="countdown" class="mode-timer">00:00:00</span>'
+        if max_runtime is not None and max_runtime > 0
+        else '<span id="countdown" class="mode-fg">FG</span>'
+    )
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -115,14 +127,35 @@ def _html_page(version: str) -> bytes:
       font-size: 0.9rem;
       color: color-mix(in srgb, currentColor 65%, transparent);
     }}
-    h1#second {{
+    .status-bar {{
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      width: 100%;
       font-size: 3rem;
       font-weight: 700;
       margin: 0;
       line-height: 1;
       font-variant-numeric: tabular-nums;
+    }}
+    #second {{
+      min-width: 2.5ch;
       color: #28a745;
       transition: color 0.35s ease;
+    }}
+    #countdown {{
+      font-variant-numeric: tabular-nums;
+    }}
+    #countdown.mode-fg,
+    #countdown.mode-timer {{
+      color: light-dark(#2563eb, #60a5fa);
+    }}
+    #countdown.mode-fg,
+    #countdown.mode-expired {{
+      font-variant-numeric: normal;
+    }}
+    #countdown.mode-expired {{
+      color: light-dark(#dc2626, #f87171);
     }}
     .entries-panel {{
       padding-top: 0.5rem;
@@ -167,20 +200,12 @@ def _html_page(version: str) -> bytes:
       transition: background-color 0.15s ease;
     }}
     .entries-table tbody tr.is-hover {{
-      background: color-mix(in srgb, #ffeb3b 55%, transparent);
+      background: color-mix(in srgb, #60a5fa 40%, transparent);
     }}
     @media (prefers-color-scheme: dark) {{
       .entries-table tbody tr.is-hover {{
-        background: color-mix(in srgb, #ffd54f 40%, transparent);
+        background: color-mix(in srgb, #3b82f6 35%, transparent);
       }}
-    }}
-    .entries-table tbody tr.is-copied {{
-      animation: copy-flash 0.9s ease-out forwards;
-    }}
-    @keyframes copy-flash {{
-      0% {{ background-color: #5fe89a; }}
-      65% {{ background-color: #5fe89a; }}
-      100% {{ background-color: transparent; }}
     }}
     .col-key {{
       font-weight: 500;
@@ -203,23 +228,21 @@ def _html_page(version: str) -> bytes:
       text-align: left;
       padding: 0.35rem 0.4rem 0.35rem 0.55rem;
       border-radius: 0.35rem;
-      border: 1px solid light-dark(#2563eb, #60a5fa);
-      background: light-dark(transparent, #2c2c2e);
-      color: light-dark(#000000, #f2f2f7);
+      border: 1px solid light-dark(#fff9c4, #fef08a);
+      background: light-dark(#fff9c4, #fef08a);
+      color: light-dark(#000000, #1c1c1e);
       cursor: pointer;
       transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
     }}
     .col-username:hover {{
-      background: light-dark(
-        color-mix(in srgb, #2563eb 10%, transparent),
-        color-mix(in srgb, #60a5fa 16%, #2c2c2e)
-      );
-      border-color: light-dark(#1d4ed8, #93c5fd);
+      background: light-dark(#fff59d, #fde047);
+      border-color: light-dark(#fff59d, #fde047);
     }}
     tr.is-hover .col-username,
     tr.is-hover .col-username:hover {{
-      background: light-dark(#ffffff, #1c1c1e);
-      color: light-dark(#000000, #f2f2f7);
+      background: light-dark(#fff9c4, #fef08a);
+      border-color: light-dark(#fff9c4, #fef08a);
+      color: light-dark(#000000, #1c1c1e);
     }}
     .col-username:disabled {{
       opacity: 0.5;
@@ -268,6 +291,9 @@ def _html_page(version: str) -> bytes:
     button.btn-otp:hover {{
       filter: brightness(1.08);
     }}
+    .entries-table button.is-pressed {{
+      transition: background-color 0.08s ease, border-color 0.08s ease, color 0.08s ease;
+    }}
     .msg {{ min-height: 1.25rem; font-size: 0.85rem; color: color-mix(in srgb, currentColor 55%, transparent); }}
     .msg.err {{ color: #c0392b; }}
     .disclaimer {{
@@ -290,7 +316,9 @@ def _html_page(version: str) -> bytes:
       <span class="title-sep">|</span>
       <span class="title-url">{REPO_URL}</span>
     </a>
-    <h1 id="second" aria-live="polite">00</h1>
+    <h1 class="status-bar" aria-live="polite">
+      <span id="second">00</span>{countdown_markup}
+    </h1>
   </header>
   <main class="entries-panel">
     <div id="entries"></div>
@@ -300,7 +328,37 @@ def _html_page(version: str) -> bytes:
   <script>
     const statusEl = document.getElementById("status");
     const secondEl = document.getElementById("second");
+    const countdownEl = document.getElementById("countdown");
+    const maxRuntime = {max_runtime_js};
+    const startedAt = {started_at_js};
     const otpButtons = [];
+
+    function formatCountdown(totalSec) {{
+      const h = Math.floor(totalSec / 3600);
+      const m = Math.floor((totalSec % 3600) / 60);
+      const s = totalSec % 60;
+      return `${{String(h).padStart(2, "0")}}:${{String(m).padStart(2, "0")}}:${{String(s).padStart(2, "0")}}`;
+    }}
+
+    function updateCountdown() {{
+      if (!countdownEl) {{
+        return;
+      }}
+      if (maxRuntime === null || startedAt === null) {{
+        countdownEl.textContent = "FG";
+        countdownEl.className = "mode-fg";
+        return;
+      }}
+      const elapsed = Math.floor((Date.now() - startedAt) / 1000);
+      const remaining = Math.max(0, maxRuntime - elapsed);
+      if (remaining === 0) {{
+        countdownEl.textContent = "Expired";
+        countdownEl.className = "mode-expired";
+        return;
+      }}
+      countdownEl.textContent = formatCountdown(remaining);
+      countdownEl.className = "mode-timer";
+    }}
 
     function colorForSecond(sec) {{
       const green = [40, 167, 69];
@@ -341,28 +399,39 @@ def _html_page(version: str) -> bytes:
       const color = colorForSecond(sec);
       secondEl.style.color = color;
       applyOtpButtonColors(sec);
+      updateCountdown();
     }}
 
     updateSecond();
     setInterval(updateSecond, 1000);
+    updateCountdown();
 
     function setStatus(text, isError) {{
       statusEl.textContent = text || "";
       statusEl.className = isError ? "msg err" : "msg";
     }}
 
-    function flashCopied(row) {{
-      row.classList.remove("is-copied");
-      void row.offsetWidth;
-      row.classList.add("is-copied");
-      row.addEventListener(
-        "animationend",
-        () => row.classList.remove("is-copied"),
-        {{ once: true }}
-      );
+    function flashPressed(button) {{
+      const style = getComputedStyle(button);
+      const bg = style.backgroundColor;
+      const fg = style.color;
+      button.classList.add("is-pressed");
+      button.style.backgroundColor = fg;
+      button.style.borderColor = fg;
+      button.style.color = bg;
+      window.setTimeout(() => {{
+        button.classList.remove("is-pressed");
+        button.style.backgroundColor = "";
+        button.style.borderColor = "";
+        button.style.color = "";
+        if (button.classList.contains("btn-otp")) {{
+          applyOtpButtonColors(new Date().getSeconds());
+        }}
+      }}, 280);
     }}
 
-    async function copyValue(entryId, kind, trigger, row) {{
+    async function copyValue(entryId, kind, trigger) {{
+      flashPressed(trigger);
       trigger.disabled = true;
       setStatus("");
       try {{
@@ -373,7 +442,6 @@ def _html_page(version: str) -> bytes:
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "copy failed");
         await navigator.clipboard.writeText(data.value);
-        flashCopied(row);
         const labels = {{
           password: "Password copied.",
           otp: "OTP copied.",
@@ -433,7 +501,7 @@ def _html_page(version: str) -> bytes:
         const userText = entry.username ?? entry.id.split(".").slice(1).join(".") ?? "";
         userBtn.textContent = userText;
         userBtn.title = userText;
-        userBtn.addEventListener("click", () => copyValue(entry.id, "username", userBtn, row));
+        userBtn.addEventListener("click", () => copyValue(entry.id, "username", userBtn));
         userCell.append(userBtn);
 
         const pwdCell = document.createElement("td");
@@ -442,7 +510,7 @@ def _html_page(version: str) -> bytes:
         pwdBtn.type = "button";
         pwdBtn.className = "btn-pwd";
         pwdBtn.textContent = "Pwd";
-        pwdBtn.addEventListener("click", () => copyValue(entry.id, "password", pwdBtn, row));
+        pwdBtn.addEventListener("click", () => copyValue(entry.id, "password", pwdBtn));
         pwdCell.append(pwdBtn);
 
         const otpCell = document.createElement("td");
@@ -452,7 +520,7 @@ def _html_page(version: str) -> bytes:
           otpBtn.type = "button";
           otpBtn.className = "btn-otp";
           otpBtn.textContent = "OTP";
-          otpBtn.addEventListener("click", () => copyValue(entry.id, "otp", otpBtn, row));
+          otpBtn.addEventListener("click", () => copyValue(entry.id, "otp", otpBtn));
           otpCell.append(otpBtn);
           otpButtons.push(otpBtn);
         }}
@@ -476,6 +544,8 @@ class CotpWebHandler(BaseHTTPRequestHandler):
     vault_data: dict[str, Any]
     entry_refs: list[str]
     app_version: str
+    max_runtime: int | None
+    started_at: float | None
 
     def log_message(self, format: str, *args: object) -> None:
         return
@@ -515,7 +585,13 @@ class CotpWebHandler(BaseHTTPRequestHandler):
             self._send_bytes(favicon_ico(), "image/x-icon")
             return
         if path == "/" or self.path.startswith("/?"):
-            self._send_html(_html_page(self.app_version))
+            self._send_html(
+                _html_page(
+                    self.app_version,
+                    max_runtime=self.max_runtime,
+                    started_at=self.started_at,
+                )
+            )
             return
         if self.path == "/api/entries":
             entries_payload: list[dict[str, str | bool]] = []
@@ -594,6 +670,8 @@ def make_handler(
     entry_refs: list[str],
     *,
     app_version: str | None = None,
+    max_runtime: int | None = None,
+    started_at: float | None = None,
 ) -> type[CotpWebHandler]:
     class Handler(CotpWebHandler):
         pass
@@ -601,6 +679,8 @@ def make_handler(
     Handler.vault_data = vault_data
     Handler.entry_refs = entry_refs
     Handler.app_version = app_version or package_version()
+    Handler.max_runtime = max_runtime
+    Handler.started_at = started_at
     return Handler
 
 
@@ -611,11 +691,17 @@ def run_server(
     host: str = "127.0.0.1",
     port: int = 8765,
     max_runtime: int | None = None,
+    started_at: float | None = None,
     interactive: bool = True,
 ) -> None:
     vault_data = load_vault(vault_path)
     entry_refs = load_entry_refs(entries_path)
-    handler = make_handler(vault_data, entry_refs)
+    handler = make_handler(
+        vault_data,
+        entry_refs,
+        max_runtime=max_runtime,
+        started_at=started_at,
+    )
     server = ThreadingHTTPServer((host, port), handler)
     print(format_serving_message(host, port, until_ctrl_c=interactive))
     if max_runtime is not None and max_runtime > 0:

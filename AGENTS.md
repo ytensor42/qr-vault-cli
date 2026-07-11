@@ -87,6 +87,7 @@
 | `cotp_cli/main.py` | argparse, `put` / `get` / `read` / `random`, `run_query`, `run_save_from_png`, 경로·vault 로직 대부분 |
 | `cotp_cli/config.py` | 선택 YAML 설정 로드 (`COTP_CONFIG`, XDG 기본 경로), `vault_path_for_put` |
 | `cotp_web/` | 로컬 웹 UI (`cotp-web`): vault 엔트리 password/OTP 클립보드 복사. `install.sh` 가 `~/bin/cotp-web` 설치 |
+| `browser-extension/` | **cotp fill** — Chrome·Firefox 확장; `cotp-web` API로 로그인 폼 자동 입력 |
 | `tests/` | `pytest`; vault·클립보드는 `monkeypatch`로 고립 |
 | `pyproject.toml` | 패키지 메타, `[project.scripts]` `cotp`, `cotp-web` |
 
@@ -191,6 +192,11 @@ oracle:
 
 - `read`: vault 없이 PNG에서 시드만 stdout.
 - `random`: `secrets` 기반 12자 + 한 줄에 `<plain> <base64>`.
+
+### `cotp-web` / `browser-extension`
+
+- **`cotp-web`**: `cotp_web/server.py` 에 HTML/CSS/JS 임베드. 엔트리 목록은 `cotp-web.yaml`; vault는 `COTP_CONFIG` / `vault_path`. 테이블 열: account · username · Pwd · OTP. 기본 실행은 기존 백그라운드 중단 후 **포그라운드**(Ctrl+C); **`-t` / `--time`** 으로 백그라운드(숫자만 = 분, `30m`, `1h`, `1h30m`). 로컬 UI 수정 후 `COTP_INSTALL_LOCAL=1 ./install.sh --no-cleanup`.
+- **`browser-extension/`** (**cotp fill**): Chrome·Firefox MV3. `http://127.0.0.1:8765` API만 사용. `browser.js` = `globalThis.browser ?? chrome`. Firefox는 임시 로드(`about:debugging`); Chrome은 `chrome://extensions` Load unpacked.
 
 ---
 

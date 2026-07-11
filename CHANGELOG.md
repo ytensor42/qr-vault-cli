@@ -7,11 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.9] — 2026-07-11
+
+### Added
+
+- **cotp fill** browser extension: **Firefox** support (Chrome + Firefox, Manifest V3); shared `browser.js` API shim.
+- `browser-extension/` directory (renamed from `chrome-extension/`).
+
+### Changed
+
+- Extension docs and main README (EN/KO) updated for `browser-extension/`, Firefox install, and current `cotp-web` behaviour.
+
+## [0.7.8] — 2026-07-11
+
+### Changed
+
+- `cotp-web`: `-t` treats a bare number as **minutes** (e.g. `-t 60` = 1 hour).
+- `cotp-web`: foreground mode shows **FG** (blue); timed mode shows a blue countdown and **Expired** (red) at zero.
+- `cotp-web`: username button uses light yellow background and matching border.
+- `cotp-web`: click feedback inverts button colors only (no whole-row flash).
+- `cotp-web`: row hover highlight is light blue instead of yellow.
+
+## [0.7.7] — 2026-07-11
+
+### Added
+
+- `cotp-web`: favicon (`favicon-32.png`; `/favicon.ico` for Safari).
+- `cotp-web`: `-t` / `--time` for background runtime (`1h`, `30m`, `1h30m`, …).
+- `cotp-web`: remaining runtime countdown (`HH:MM:SS`) on the page when running with a time limit.
+
+### Changed
+
+- `cotp-web`: default launch stops any background server and runs in the **foreground** (no y/N prompt).
+- `cotp-web`: Pwd button readable in dark theme (light red background, white text).
+- `cotp-web`: second and countdown shown at left / right of the status bar.
+
 ## [0.7.6] — 2026-07-10
 
 ### Added
 
-- **cotp fill** Chrome extension (`chrome-extension/`): pick an entry in the popup to fill username, password, and OTP on the active tab (Teleport and generic login forms).
+- **cotp fill** browser extension (`browser-extension/`): pick an entry in the popup to fill username, password, and OTP on the active tab (Teleport and generic login forms).
 
 ### Changed
 
@@ -93,7 +128,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Earlier history: see git log and PyPI release notes.
 
-[Unreleased]: https://github.com/ytensor42/qr-vault-cli/compare/v0.7.6...HEAD
+[Unreleased]: https://github.com/ytensor42/qr-vault-cli/compare/v0.7.9...HEAD
+[0.7.9]: https://github.com/ytensor42/qr-vault-cli/compare/v0.7.8...v0.7.9
+[0.7.8]: https://github.com/ytensor42/qr-vault-cli/compare/v0.7.7...v0.7.8
+[0.7.7]: https://github.com/ytensor42/qr-vault-cli/compare/v0.7.6...v0.7.7
 [0.7.6]: https://github.com/ytensor42/qr-vault-cli/compare/v0.7.5...v0.7.6
 [0.7.5]: https://github.com/ytensor42/qr-vault-cli/compare/v0.7.4...v0.7.5
 [0.7.4]: https://github.com/ytensor42/qr-vault-cli/compare/v0.7.3...v0.7.4

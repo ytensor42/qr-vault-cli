@@ -5,26 +5,29 @@ from __future__ import annotations
 import argparse
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 from cotp_cli.main import default_vault_path
 
+from cotp_web.duration import parse_duration
 from cotp_web.process import register_background_pid, stop_existing_background
 from cotp_web.server import format_serving_message, run_server
 from cotp_web.vault import resolve_entries_path
 
-DEFAULT_BACKGROUND_SECONDS = 3600
 
-
-def _ask_background() -> bool:
-    if not sys.stdin.isatty():
-        return False
+def _duration_type(value: str) -> int:
     try:
-        answer = input("Run in background for 1 hour? [y/N]: ").strip().lower()
-    except (EOFError, KeyboardInterrupt):
-        print(file=sys.stderr)
-        return False
-    return answer in ("y", "yes")
+        return parse_duration(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from exc
+
+
+def _stop_existing_if_any() -> int | None:
+    stopped = stop_existing_background()
+    if stopped is not None:
+        print(f"stopped existing cotp-web (pid {stopped})", file=sys.stderr)
+    return stopped
 
 
 def _child_argv(args: argparse.Namespace, max_runtime: int) -> list[str]:
@@ -44,15 +47,33 @@ def _child_argv(args: argparse.Namespace, max_runtime: int) -> list[str]:
 
 
 def _spawn_background(child_argv: list[str]) -> subprocess.Popen[bytes]:
-    stopped = stop_existing_background()
-    if stopped is not None:
-        print(f"stopped existing cotp-web (pid {stopped})", file=sys.stderr)
+    _stop_existing_if_any()
     return subprocess.Popen(
         [sys.executable, "-m", "cotp_web", *child_argv],
         start_new_session=True,
         stdin=subprocess.DEVNULL,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
+    )
+
+
+def _run_foreground(
+    args: argparse.Namespace,
+    *,
+    vault_path: Path,
+    entries_path: Path,
+    max_runtime: int | None,
+) -> None:
+    if max_runtime is not None and max_runtime > 0:
+        register_background_pid()
+    run_server(
+        vault_path=vault_path,
+        entries_path=entries_path,
+        host=args.host,
+        port=args.port,
+        max_runtime=max_runtime,
+        started_at=time.time(),
+        interactive=not args.foreground,
     )
 
 
@@ -84,6 +105,14 @@ def main(argv: list[str] | None = None) -> int:
         default=8765,
         help="TCP port (default: 8765).",
     )
+    parser.add_argument(
+        "-t",
+        "--time",
+        dest="time_limit",
+        metavar="DURATION",
+        type=_duration_type,
+        help="Background runtime in minutes by default (e.g. 60, 90m, 1h, 1h30m).",
+    )
     parser.add_argument("--foreground", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--max-runtime", type=int, default=None, help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
@@ -102,22 +131,17 @@ def main(argv: list[str] | None = None) -> int:
         print(f"error: entries file not found: {entries_path}", file=sys.stderr)
         return 1
 
-    if not args.foreground and _ask_background():
-        _spawn_background(_child_argv(args, DEFAULT_BACKGROUND_SECONDS))
+    if args.foreground:
+        _run_foreground(args, vault_path=vault_path, entries_path=entries_path, max_runtime=args.max_runtime)
+        return 0
+
+    if args.time_limit is not None:
+        _spawn_background(_child_argv(args, args.time_limit))
         print(format_serving_message(args.host, args.port))
         return 0
 
-    if args.foreground and args.max_runtime is not None and args.max_runtime > 0:
-        register_background_pid()
-
-    run_server(
-        vault_path=vault_path,
-        entries_path=entries_path,
-        host=args.host,
-        port=args.port,
-        max_runtime=args.max_runtime,
-        interactive=not args.foreground,
-    )
+    _stop_existing_if_any()
+    _run_foreground(args, vault_path=vault_path, entries_path=entries_path, max_runtime=None)
     return 0
 
 

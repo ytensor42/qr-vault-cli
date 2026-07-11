@@ -1,4 +1,5 @@
 import { getServerConfig, loadCredentials, loadEntries } from "./api.js";
+import { isRestrictedTabUrl, storageSyncSet, tabs } from "./browser.js";
 
 const statusEl = document.getElementById("status");
 const statusDot = document.getElementById("status-dot");
@@ -89,16 +90,16 @@ async function fillEntry(row, entry) {
   row.classList.add("is-busy");
   setStatus(`Filling ${entry.username || entry.id}…`);
   try {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    const [tab] = await tabs.query({ active: true, currentWindow: true });
     if (!tab?.id) {
       throw new Error("No active tab.");
     }
-    if (tab.url?.startsWith("chrome://") || tab.url?.startsWith("chrome-extension://")) {
+    if (isRestrictedTabUrl(tab.url)) {
       throw new Error("Open a login page first.");
     }
 
     const credentials = await loadCredentials(entry.id, Boolean(entry.has_otp));
-    const response = await chrome.tabs.sendMessage(tab.id, {
+    const response = await tabs.sendMessage(tab.id, {
       type: "COTP_FILL",
       credentials,
     });
@@ -137,7 +138,7 @@ async function refresh() {
   } catch (error) {
     renderEntries([]);
     setStatus(
-      "cotp-web not reachable. Run: cotp-web cotp-web.yaml (background 1h)",
+      "cotp-web not reachable. Run: cotp-web cotp-web.yaml (or -t 60 for background)",
       true,
     );
   }
@@ -152,7 +153,7 @@ async function init() {
       return;
     }
     const config = await getServerConfig();
-    await chrome.storage.sync.set({ cotpHost: config.host, cotpPort: value });
+    await storageSyncSet({ cotpHost: config.host, cotpPort: value });
     refresh();
   });
   await refresh();

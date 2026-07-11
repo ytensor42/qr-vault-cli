@@ -3,9 +3,9 @@
 [![CI](https://github.com/ytensor42/qr-vault-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/ytensor42/qr-vault-cli/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-**Repository:** [**qr-vault-cli**](https://github.com/ytensor42/qr-vault-cli) — install from **GitHub source** (see below). Commands: **`cotp`** (CLI) and **`cotp-web`** (local web UI).
+**Repository:** [**qr-vault-cli**](https://github.com/ytensor42/qr-vault-cli) — install from **GitHub source** (see below). Commands: **`cotp`** (CLI), **`cotp-web`** (local web UI), **`cotp fill`** (browser extension).
 
-**cotp** is a short CLI for working with `qr-vault.yaml`, PNG QR codes, TOTP, and random passwords. **`cotp-web`** is a minimal localhost web UI to copy vault passwords and OTP codes to the clipboard.
+**cotp** is a short CLI for working with `qr-vault.yaml`, PNG QR codes, TOTP, and random passwords. **`cotp-web`** is a minimal localhost web UI to copy vault passwords and OTP codes to the clipboard. **`cotp fill`** (browser extension) can fill login forms from the same `cotp-web` API.
 
 (Korean: [README-ko.md](README-ko.md))
 
@@ -101,15 +101,18 @@ cotp random
 
 ## `cotp-web` — local web UI (clipboard)
 
-A small **localhost-only** server that lists selected vault entries and copies **username**, **password**, or **TOTP** to the clipboard when you click a button. Seeds and passwords are **not** included in the HTML or the initial API response; values are fetched only when you press **User**, **Pwd**, or **OTP**.
+A small **localhost-only** server that lists selected vault entries and copies **username**, **password**, or **TOTP** to the clipboard. Seeds and passwords are **not** included in the HTML or the initial API response; values are fetched only when you click a button.
 
 ### Features
 
 - Entry list from a YAML file (see below); vault path from **`COTP_CONFIG`** / `vault_path` (same as `cotp`).
-- Page layout: `cotp-web v<version>`, current **second** (sticky header), then one row per entry with **User** / **Pwd** / **OTP** buttons.
-- **OTP** button is shown only when the vault entry has a usable seed; **Pwd** stays in the same column on every row.
-- Hover highlight (yellow); brief green flash on successful copy.
-- Foreground: `==> 127.0.0.1:<port>  until CTRL-C` · optional background run for **1 hour** (interactive prompt).
+- **Table layout:** account · username · **Pwd** · **OTP** columns (aligned, no header row).
+- **Status bar:** current clock **second** (left, green→red); **FG** (blue) in foreground mode, or **HH:MM:SS** countdown (blue) / **Expired** (red) when started with **`-t`**.
+- Click **username** (light yellow) to copy; **Pwd** / **OTP** buttons in fixed columns. **OTP** only when the vault entry has a usable seed.
+- Row hover: light blue. Click feedback: button colours invert briefly (row does not flash).
+- Favicon (`favicon-32.png`; Safari via `/favicon.ico`).
+- **Default run:** stops any existing background `cotp-web`, then **foreground** until Ctrl+C (`==> 127.0.0.1:<port>  until CTRL-C`).
+- **Background:** **`-t` / `--time`** — duration in minutes by default (`-t 60`), or `30m`, `1h`, `1h30m` (stops prior background process, no prompt).
 
 ### Entry list YAML (`cotp-web.yaml`)
 
@@ -133,11 +136,34 @@ Top-level keys are vault **KEY**s; each list item needs **`username`**. Rows are
 cotp-web cotp-web.yaml
 cotp-web cotp-web.yaml --vault ~/path/to/qr-vault.yaml   # optional override
 cotp-web cotp-web.yaml --port 8765
+cotp-web cotp-web.yaml -t 60          # background 60 minutes
+cotp-web cotp-web.yaml -t 1h30m       # background 1h 30m
 ```
 
 Open `http://127.0.0.1:8765` (default). Binds to **127.0.0.1** only.
 
+**Local UI changes** (from a git clone) require reinstall:
+
+```bash
+COTP_INSTALL_LOCAL=1 ./install.sh --no-cleanup
+```
+
 Development: `python -m cotp_web cotp-web.yaml` from an editable install.
+
+## `cotp fill` — browser extension (Chrome & Firefox)
+
+Fill **username**, **password**, and **OTP** on the active tab from a running **`cotp-web`** server. Pick an entry in the popup; no URL-to-entry mapping (same login URL, many users is fine).
+
+| Browser | Install |
+|---------|---------|
+| **Chrome** | `chrome://extensions` → Developer mode → **Load unpacked** → [`browser-extension/`](browser-extension/) |
+| **Firefox** | `about:debugging#/runtime/this-firefox` → **Load Temporary Add-on…** → `browser-extension/manifest.json` |
+
+1. Start **`cotp-web`** (foreground or `cotp-web cotp-web.yaml -t 60`).
+2. Open a login page, click the extension icon, choose **account / username**.
+3. Reload the tab once after first install so the content script loads.
+
+Full details: [`browser-extension/README.md`](browser-extension/README.md).
 
 ## Install on another Mac
 

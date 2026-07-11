@@ -5,7 +5,7 @@ from cotp_cli.main import main
 
 
 def test_version() -> None:
-    assert __version__ == "0.7.6"
+    assert __version__ == "0.7.9"
 
 
 def test_main_version_flag(capsys: pytest.CaptureFixture[str]) -> None:

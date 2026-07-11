@@ -1,7 +1,9 @@
 /** Talk to the local cotp-web HTTP API. */
 
+import { storageSyncGet } from "./browser.js";
+
 export async function getServerConfig() {
-  const stored = await chrome.storage.sync.get({
+  const stored = await storageSyncGet({
     cotpHost: "127.0.0.1",
     cotpPort: 8765,
   });

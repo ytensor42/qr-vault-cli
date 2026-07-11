@@ -3,9 +3,9 @@
 [![CI](https://github.com/ytensor42/qr-vault-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/ytensor42/qr-vault-cli/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-**저장소:** [**qr-vault-cli**](https://github.com/ytensor42/qr-vault-cli) — **GitHub 소스**로 설치 (아래 참고). 명령: **`cotp`** (CLI), **`cotp-web`** (로컬 웹 UI).
+**저장소:** [**qr-vault-cli**](https://github.com/ytensor42/qr-vault-cli) — **GitHub 소스**로 설치 (아래 참고). 명령: **`cotp`** (CLI), **`cotp-web`** (로컬 웹 UI), **`cotp fill`** (브라우저 확장).
 
-짧은 이름 **cotp** — `qr-vault.yaml`, PNG QR, TOTP, 랜덤 비밀번호를 다룹니다. **`cotp-web`** 은 브라우저에서 vault 엔트리의 비밀번호·OTP를 클립보드로 복사하는 간단한 로컬 웹 UI입니다.
+짧은 이름 **cotp** — `qr-vault.yaml`, PNG QR, TOTP, 랜덤 비밀번호를 다룹니다. **`cotp-web`** 은 브라우저에서 vault 엔트리의 비밀번호·OTP를 클립보드로 복사하는 간단한 로컬 웹 UI입니다. **`cotp fill`** 브라우저 확장은 같은 `cotp-web` API로 로그인 폼을 채웁니다.
 
 (영문 문서: [README.md](README.md))
 
@@ -90,15 +90,18 @@ cotp random
 
 ## `cotp-web` — 로컬 웹 UI (클립보드)
 
-**localhost 전용** 미니 서버. YAML에 적어 둔 vault 엔트리를 나열하고, **User** / **Pwd** / **OTP** 버튼으로 클립보드에 복사합니다. 시드·비밀번호는 HTML이나 목록 API에 **노출되지 않고**, 버튼을 눌렀을 때만 서버에서 받습니다.
+**localhost 전용** 미니 서버. YAML에 적어 둔 vault 엔트리를 나열하고, 버튼 클릭으로 클립보드에 복사합니다. 시드·비밀번호는 HTML이나 목록 API에 **노출되지 않고**, 버튼을 눌렀을 때만 서버에서 받습니다.
 
 ### 기능
 
-- 엔트리 목록 YAML + `COTP_CONFIG` 의 **`vault_path`** ( `cotp` 와 동일).
-- 화면: `cotp-web v<version>` · 현재 **초**(상단 고정) · 엔트리별 **User** / **Pwd** / **OTP**.
-- seed 가 없으면 **OTP** 버튼 숨김; **Pwd** 열 위치는 다른 행과 동일.
-- 마우스 hover 노란색 하이라이트; 복사 성공 시 잠깐 녹색 플래시.
-- 포그라운드: `==> 127.0.0.1:<port>  until CTRL-C` · 백그라운드 실행 선택 시 **1시간** 후 자동 종료.
+- 엔트리 목록 YAML + `COTP_CONFIG` 의 **`vault_path`** (`cotp` 와 동일).
+- **테이블:** account · username · **Pwd** · **OTP** 열 정렬(헤더 없음).
+- **상단 바:** 현재 **초**(왼쪽, 녹→적) · 포그라운드면 **FG**(파랑), **`-t`** 이면 **HH:MM:SS** 카운트다운(파랑) / 만료 시 **Expired**(빨강).
+- **username**(연한 노랑) 클릭 → 복사; **Pwd** / **OTP** 고정 열. seed 없으면 **OTP** 숨김.
+- 행 hover: 연한 파랑. 클릭 시 버튼 색만 잠깐 반전(행 전체 플래시 없음).
+- 파비콘 (`favicon-32.png`, Safari는 `/favicon.ico`).
+- **기본 실행:** 기존 백그라운드 `cotp-web` 중단 후 **포그라운드**(Ctrl+C까지). y/N 프롬프트 없음.
+- **백그라운드:** **`-t` / `--time`** — 숫자만 쓰면 **분** (`-t 60`), 또는 `30m`, `1h`, `1h30m`.
 
 ### 엔트리 YAML (`cotp-web.yaml`)
 
@@ -122,11 +125,34 @@ top-level key = vault **KEY**, 각 항목에 **`username`**. 매칭은 `key.user
 cotp-web cotp-web.yaml
 cotp-web cotp-web.yaml --vault ~/path/to/qr-vault.yaml   # 선택: vault 경로 덮어쓰기
 cotp-web cotp-web.yaml --port 8765
+cotp-web cotp-web.yaml -t 60          # 백그라운드 60분
+cotp-web cotp-web.yaml -t 1h30m       # 백그라운드 1시간 30분
 ```
 
 기본 `http://127.0.0.1:8765`, **127.0.0.1** 만 바인딩.
 
+**로컬 소스 수정 후** (git clone에서 UI 변경 시) 재설치:
+
+```bash
+COTP_INSTALL_LOCAL=1 ./install.sh --no-cleanup
+```
+
 개발: editable 설치 후 `python -m cotp_web cotp-web.yaml`.
+
+## `cotp fill` — 브라우저 확장 (Chrome & Firefox)
+
+실행 중인 **`cotp-web`** 에서 **username** · **password** · **OTP** 를 가져와 활성 탭 로그인 폼을 채웁니다. 팝업에서 엔트리를 고르면 됩니다(URL 매핑 없음).
+
+| 브라우저 | 설치 |
+|----------|------|
+| **Chrome** | `chrome://extensions` → 개발자 모드 → **압축해제된 확장 프로그램 로드** → [`browser-extension/`](browser-extension/) |
+| **Firefox** | `about:debugging#/runtime/this-firefox` → **임시 확장 기능 로드…** → `browser-extension/manifest.json` |
+
+1. **`cotp-web`** 실행 (포그라운드 또는 `cotp-web cotp-web.yaml -t 60`).
+2. 로그인 페이지에서 확장 아이콘 → **account / username** 선택.
+3. 최초 설치 후에는 탭을 한 번 **새로고침** (content script 로드).
+
+자세한 내용: [`browser-extension/README.md`](browser-extension/README.md).
 
 ## 다른 Mac에서 설치하기
 

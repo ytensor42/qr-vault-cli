@@ -13,14 +13,15 @@ from unittest.mock import patch
 import pytest
 import yaml
 
-from cotp_web.__main__ import DEFAULT_BACKGROUND_SECONDS, _child_argv, _spawn_background
+from cotp_web.duration import parse_duration
+from cotp_web.__main__ import _child_argv, _spawn_background, main
 from cotp_web.process import (
     read_background_pid,
     register_background_pid,
     remove_pid_file,
     stop_existing_background,
 )
-from cotp_web.server import favicon_ico, favicon_png, make_handler, run_server
+from cotp_web.server import _html_page, favicon_ico, favicon_png, make_handler, run_server
 from cotp_web.vault import (
     EntryRefError,
     load_entry_refs,
@@ -55,6 +56,35 @@ def _sample_vault() -> dict:
     }
 
 
+def test_parse_duration() -> None:
+    assert parse_duration("60") == 3600
+    assert parse_duration("1h") == 3600
+    assert parse_duration("30m") == 1800
+    assert parse_duration("30") == 1800
+    assert parse_duration("1h30m") == 5400
+    assert parse_duration("90m") == 5400
+    assert parse_duration("1H30M") == 5400
+    with pytest.raises(ValueError, match="invalid duration"):
+        parse_duration("0")
+    with pytest.raises(ValueError, match="invalid duration"):
+        parse_duration("0m")
+    with pytest.raises(ValueError, match="invalid duration"):
+        parse_duration("bad")
+
+
+def test_html_page_countdown_when_max_runtime() -> None:
+    html = _html_page("0.7.9", max_runtime=3600, started_at=1_700_000_000.0).decode()
+    assert 'id="countdown" class="mode-timer">00:00:00</span>' in html
+    assert "maxRuntime = 3600" in html
+    assert "startedAt = 1700000000000" in html
+
+
+def test_html_page_foreground_label_without_max_runtime() -> None:
+    html = _html_page("0.7.9").decode()
+    assert 'id="countdown" class="mode-fg">FG</span>' in html
+    assert "maxRuntime = null" in html
+
+
 def test_child_argv_for_background_spawn() -> None:
     args = argparse.Namespace(
         entries="cotp-web.yaml",
@@ -62,7 +92,7 @@ def test_child_argv_for_background_spawn() -> None:
         host="127.0.0.1",
         port=9000,
     )
-    assert _child_argv(args, DEFAULT_BACKGROUND_SECONDS) == [
+    assert _child_argv(args, 3600) == [
         "cotp-web.yaml",
         "--foreground",
         "--max-runtime",
@@ -147,6 +177,41 @@ def test_spawn_background_stops_existing(
     _spawn_background(["entries.yaml", "--foreground", "--max-runtime", "3600"])
     assert calls == [1]
 
+
+def test_default_main_stops_existing_and_runs_foreground(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    vault = tmp_path / "qr-vault.yaml"
+    entries = tmp_path / "entries.yaml"
+    vault.write_text(yaml.safe_dump(_sample_vault(), sort_keys=False), encoding="utf-8")
+    entries.write_text(
+        yaml.safe_dump({"test": [{"username": "admin"}]}, sort_keys=False),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr("cotp_web.__main__.default_vault_path", lambda: vault)
+    stopped: list[bool] = []
+    monkeypatch.setattr(
+        "cotp_web.__main__._stop_existing_if_any",
+        lambda: stopped.append(True) or 9,
+    )
+    foreground_runtime: list[int | None] = []
+
+    def fake_foreground(
+        args: argparse.Namespace,
+        *,
+        vault_path: Path,
+        entries_path: Path,
+        max_runtime: int | None,
+    ) -> None:
+        foreground_runtime.append(max_runtime)
+
+    monkeypatch.setattr("cotp_web.__main__._run_foreground", fake_foreground)
+
+    assert main([str(entries)]) == 0
+    assert stopped == [True]
+    assert foreground_runtime == [None]
 
 
 def test_run_server_prints_url_only(capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
